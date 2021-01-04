@@ -13,7 +13,26 @@ from functools import reduce
 logger = logging.getLogger('main_logger')
 
 
+class ProgramQuerySet(models.QuerySet):
+    def get_collections(self):
+        collections = None
+        progs = self.all()
+        for prog in progs:
+            collections = prog.collection_set.all() if not collections else collections | prog.collection_set.all()
+        return collections.distinct() if collections else None
+
+    def get_data_sources(self):
+        data_sources = None
+        progs = self.all()
+        for prog in progs:
+            data_sources = prog.datasource_set.all() if not data_sources else data_sources | prog.datasource_set.all()
+        return data_sources.distinct() if data_sources else None
+
+
 class ProgramManager(models.Manager):
+    def get_queryset(self):
+        return ProgramQuerySet(self.model, using=self._db)
+
     def search(self, search_terms):
         terms = [term.strip() for term in search_terms.split()]
         q_objects = []
@@ -71,7 +90,8 @@ class Project(models.Model):
 class DataSetTypeQuerySet(models.QuerySet):
     def get_data_sources(self):
         sources = None
-        for dst in self.all():
+        dsts = self.all()
+        for dst in dsts:
             if not sources:
                 sources = dst.datasource_set.all()
             else:
@@ -119,10 +139,63 @@ class DataSetType(models.Model):
         return self.SET_TYPE_NAMES[self.set_type]
 
 
+class ImagingDataCommonsVersionQuerySet(models.QuerySet):
+
+    # Return all the data sources corresponding to this queryset
+    def get_data_sources(self, source_type=None, active=None):
+        sources = None
+        idcdvs = self.all()
+        for idcdv in idcdvs:
+            versions = idcdv.dataversion_set.all().distinct() if active is None else idcdv.dataversion_set.filter(active=active).distinct()
+            if not sources:
+                sources = versions.get_data_sources()
+            else:
+                sources = sources | versions.get_data_sources()
+        if source_type:
+            return sources.distinct().filter(source_type=source_type)
+        return sources.distinct()
+
+    # Return all display strings in this queryset
+    def get_displays(self):
+        displays = []
+        idcdvs = self.all()
+        for idcdv in idcdvs:
+            displays.append(idcdv.get_display())
+        return displays
+
+class ImagingDataCommonsVersionManager(models.Manager):
+    def get_queryset(self):
+        return ImagingDataCommonsVersionQuerySet(self.model, using=self._db)
+
+class ImagingDataCommonsVersion(models.Model):
+    id = models.AutoField(primary_key=True, null=False, blank=False)
+    name = models.CharField(max_length=128, null=False, blank=False)
+    version_number = models.CharField(max_length=128, null=False, blank=False)
+    version_uid = models.CharField(max_length=128, null=True)
+    date_active = models.DateField(auto_now_add=True, null=False, blank=False)
+    active = models.BooleanField(default=True, null=False, blank=False)
+    objects = ImagingDataCommonsVersionManager()
+
+    def get_data_sources(self, active=None):
+        if active is not None:
+            return self.dataversion_set.filter(active=active).distinct().get_data_sources().distinct()
+        return self.dataversion_set.all().distinct().get_data_sources().distinct()
+
+    def get_display(self):
+        return self.__str__()
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return "{} Version {} {}".format(self.name, self.version_number, self.date_active)
+
+
 class DataVersionQuerySet(models.QuerySet):
     def get_data_sources(self):
         sources = None
-        for dv in self.all():
+        dvs = self.all()
+        for dv in dvs:
             if not sources:
                 sources = dv.datasource_set.all()
             else:
@@ -137,6 +210,7 @@ class DataVersion(models.Model):
     version = models.CharField(max_length=16, null=False, blank=False)
     name = models.CharField(max_length=128, null=False, blank=False)
     programs = models.ManyToManyField(Program)
+    idc_versions = models.ManyToManyField(ImagingDataCommonsVersion)
     active = models.BooleanField(default=True)
     objects = DataVersionManager()
 
@@ -144,13 +218,14 @@ class DataVersion(models.Model):
         return DataVersion.objects.get(active=True, name=name).version
 
     def __str__(self):
-        return "{} ({})".format(self.name, self.version)
+        return "{} ({}) ({})".format(self.name, self.version, self.idc_versions.all())
 
 
 class CollectionQuerySet(models.QuerySet):
     def get_tooltips(self):
         tips = {}
-        for collex in self.all():
+        collections = self.all()
+        for collex in collections:
             tips[collex.collection_id] = collex.description
         return tips
 
@@ -161,9 +236,13 @@ class CollectionManager(models.Manager):
 class Collection(models.Model):
     ANALYSIS_COLLEX = 'A'
     ORIGINAL_COLLEX = 'O'
+    COLLEX_DISPLAY = {
+        ANALYSIS_COLLEX: 'Analysis',
+        ORIGINAL_COLLEX: 'Original'
+    }
     COLLEX_TYPES = (
-        (ANALYSIS_COLLEX, 'Analysis'),
-        (ORIGINAL_COLLEX, 'Original')
+        (ANALYSIS_COLLEX, COLLEX_DISPLAY[ANALYSIS_COLLEX]),
+        (ORIGINAL_COLLEX, COLLEX_DISPLAY[ORIGINAL_COLLEX])
     )
 
     id = models.AutoField(primary_key=True)
@@ -190,38 +269,44 @@ class Collection(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     collections = models.CharField(max_length=255, null=True, blank=False)
     data_versions = models.ManyToManyField(DataVersion)
-    # We make this many to many in case a collection is part of one program, though it may not be
-    program = models.ManyToManyField(Program)
+    # We make this many to many in case a collection is part of one program, thoug  h it may not be
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, null=True)
 
     def get_programs(self):
-        return self.program.all()
+        return self.program
 
     def __str__(self):
-        return "{} ({}), {}, Programs: {}".format(
-            self.short_name, self.name, "Public" if self.is_public else "Private (owner: {})".format(self.owner.email),
-            str(self.program.all())
+        return "{}, {}, Program: {}".format(
+            self.name, "Public" if self.is_public else "Private (owner: {})".format(self.owner.email),
+            str(self.program.short_name)
         )
+
+    def get_collection_type(self):
+        return self.COLLEX_DISPLAY[self.collection_type]
 
 
 class DataSourceQuerySet(models.QuerySet):
     def to_dicts(self):
+        sources = self.all()
         return [{
             "id": ds.id,
             "name": ds.name,
             "versions": ["{}: {}".format(dv.name, dv.version) for dv in self.versions.all()],
             "type": ds.source_type,
 
-        } for ds in self.all()]
+        } for ds in sources]
 
     def get_source_versions(self, active=None):
         versions = {}
-        for ds in self.all():
+        sources = self.all()
+        for ds in sources:
             versions[ds.id] = ds.versions.filter(active=active) if active is not None else ds.versions.all()
         return versions
 
     def get_source_data_types(self):
         data_types = {}
-        for ds in self.all():
+        sources = self.all()
+        for ds in sources:
             data_set_types = ds.data_sets.all()
             for data_set_type in data_set_types:
                 if ds.id not in data_types:
@@ -229,15 +314,36 @@ class DataSourceQuerySet(models.QuerySet):
                 data_types[ds.id].append(data_set_type.data_type)
         return data_types
 
+    #
+    # returns a dictionary of comprehensive information mapping attributes to this set of data sources:
+    #
+    # {
+    #   'list': [<String>, ...],
+    #   'ids': [<Integer>, ...],
+    #   'sources': {
+    #      <data source database ID>: {
+    #         'list': [<String>, ...],
+    #         'attrs': [<Attribute>, ...],
+    #         'id': <Integer>,
+    #         'name': <String>,
+    #         'data_sets': [<DataSetType>, ...],
+    #         'count_col': <Integer>
+    #      }
+    #   }
+    #
     def get_source_attrs(self, for_ui=None, for_faceting=True, by_source=True, named_set=None, set_type=None, with_set_map=False):
         start = time.time()
-        attrs = { 'list': None }
+        # Simple string list of attribute names (warning: will not properly resolve for collision)
+        attrs = { 'list': None, 'ids': None }
+        # Full source-ID dictionary of attributes
         if by_source:
             attrs['sources'] = {}
         if with_set_map:
             attrs['set_map'] = {}
 
-        for ds in self.all():
+        sources = self.all()
+
+        for ds in sources:
             q_objects = Q(active=True)
             if for_ui:
                 q_objects &= Q(default_ui_display=for_ui)
@@ -272,8 +378,11 @@ class DataSourceQuerySet(models.QuerySet):
                     )
 
             attrs['list'] = attr_set.values_list('name', flat=True) if not attrs['list'] else (attrs['list'] | attr_set.values_list('name', flat=True))
+            attrs['ids'] = attr_set.values_list('id', flat=True) if not attrs['ids'] else (
+                        attrs['ids'] | attr_set.values_list('id', flat=True))
 
-        attrs['list'] = attrs['list'].distinct()
+        attrs['list'] = attrs['list'] and attrs['list'].distinct()
+        attrs['ids'] = attrs['ids'] and attrs['ids'].distinct()
         stop = time.time()
         logger.debug("[STATUS] Time to build source attribute sets: {}".format(str(stop-start)))
 
@@ -307,6 +416,7 @@ class DataSource(models.Model):
     id = models.AutoField(primary_key=True, null=False, blank=False)
     name = models.CharField(max_length=128, null=False, blank=False)
     data_sets = models.ManyToManyField(DataSetType)
+    # Column used in faceted counts
     count_col = models.CharField(max_length=128, null=False, blank=False, default="PatientID")
     source_type = models.CharField(max_length=1, null=False, blank=False, default=SOLR, choices=SOURCE_TYPES)
     programs = models.ManyToManyField(Program)
@@ -374,6 +484,21 @@ class DataSourceJoin(models.Model):
 
 
 class AttributeQuerySet(models.QuerySet):
+
+    def get_data_sources(self, versions=None, source_type=None, active=True):
+        q_objects = Q()
+        if versions:
+            q_objects &= Q(id__in=versions.get_data_sources())
+        if source_type:
+            q_objects &= Q(source_type=source_type)
+
+        data_sources = None
+        attrs = self.all()
+        for attr in attrs:
+            data_sources = attr.data_sources.filter(q_objects) if not data_sources else (data_sources|attr.data_sources.filter(q_objects))
+
+        return data_sources.distinct()
+
     def get_attr_cats(self):
         categories = {}
         for cat in Attribute_Display_Category.objects.select_related('attribute').filter(attribute__in=self.all()):
@@ -404,7 +529,8 @@ class AttributeQuerySet(models.QuerySet):
     def get_facet_types(self):
         facet_types = {}
         attr_with_ranges = {x[0]: x[1] for x in Attribute_Ranges.objects.select_related('attribute').filter(attribute__in=self.all()).values_list('attribute__id','attribute__data_type')}
-        for attr in self.all():
+        attrs = self.all()
+        for attr in attrs:
             facet_types[attr.id] = DataSource.QUERY if attr.data_type == Attribute.CONTINUOUS_NUMERIC and attr.id in attr_with_ranges else DataSource.TERMS
         return facet_types
 
@@ -418,12 +544,14 @@ class Attribute(models.Model):
     CATEGORICAL = 'C'
     TEXT = 'T'
     STRING = 'S'
+    DATE = 'D'
     DATA_TYPES = (
         (CONTINUOUS_NUMERIC, 'Continuous Numeric'),
         (CATEGORICAL, 'Categorical String'),
         (CATEGORICAL_NUMERIC, 'Categorical Number'),
         (TEXT, 'Text'),
-        (STRING, 'String')
+        (STRING, 'String'),
+        (DATE, 'Date')
     )
     id = models.AutoField(primary_key=True, null=False, blank=False)
     objects = AttributeManager()
@@ -513,16 +641,19 @@ class Attribute_Set_Type(models.Model):
 class Attribute_Display_ValuesQuerySet(models.QuerySet):
     def to_dict(self):
         dvals = {}
-        for dv in self.all().select_related('attribute'):
+        dvattrs = self.all().select_related('attribute')
+        for dv in dvattrs:
             if dv.attribute.id not in dvals:
                 dvals[dv.attribute.id] = {}
             dvals[dv.attribute.id][dv.raw_value] = dv.display_value
 
         return dvals
 
+
 class Attribute_Display_ValuesManager(models.Manager):
     def get_queryset(self):
         return Attribute_Display_ValuesQuerySet(self.model, using=self._db)
+
 
 class Attribute_Display_Values(models.Model):
     id = models.AutoField(primary_key=True, null=False, blank=False)
@@ -537,6 +668,7 @@ class Attribute_Display_Values(models.Model):
     def __str__(self):
         return "{} - {}".format(self.raw_value, self.display_value)
 
+
 class Attribute_Display_Category(models.Model):
     id = models.AutoField(primary_key=True, null=False, blank=False)
     attribute = models.ForeignKey(Attribute, null=False, blank=False, on_delete=models.CASCADE)
@@ -545,6 +677,35 @@ class Attribute_Display_Category(models.Model):
 
     def __str__(self):
         return "{} - {}".format(self.attribute.name, self.category_display_name)
+
+
+class Attribute_TooltipsQuerySet(models.QuerySet):
+    def get_tooltips(self, attribute_id):
+        tooltips = self.filter(attribute=attribute_id)
+        tips = {tip.tooltip_id: tip.tooltip for tip in tooltips}
+
+        return tips
+
+
+class Attribute_TooltipsManager(models.Manager):
+    def get_queryset(self):
+        return Attribute_TooltipsQuerySet(self.model, using=self._db)
+
+
+# Attributes with tooltips for their values can use this model to record them
+class Attribute_Tooltips(models.Model):
+    id = models.AutoField(primary_key=True, null=False, blank=False)
+    attribute = models.ForeignKey(Attribute, null=False, blank=False, on_delete=models.CASCADE)
+    # The value of the attribute linked to this tooltip
+    tooltip_id = models.CharField(max_length=256, null=False, blank=False)
+    tooltip = models.CharField(max_length=4096, null=False, blank=False)
+    objects = Attribute_TooltipsManager()
+
+    class Meta(object):
+        unique_together = (("tooltip_id", "attribute"),)
+
+    def __str__(self):
+        return "{}:{} - {}{}".format(self.attribute.name, self.tooltip_id, self.tooltip[:64]," [...]" if len(self.tooltip) > 64 else "")
 
 class Attribute_Ranges(models.Model):
     FLOAT = 'F'

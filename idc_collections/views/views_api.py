@@ -16,8 +16,12 @@
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse
+from idc_collections.models import Program, Collection, DataSetType, ImagingDataCommonsVersion
 from django.views.decorators.http import require_http_methods
-from idc_collections.models import Program, Collection
+from cohorts.decorators import api_auth
+
+from cohorts.utils_api import get_idc_data_version
+
 from solr_helpers import *
 
 import logging
@@ -26,125 +30,193 @@ logger = logging.getLogger('main_logger')
 
 BLACKLIST_RE = settings.BLACKLIST_RE
 
+# Return a list of defined IDC versions
+# **** Currently the version is a tuple of (name, version), that identifies the version of ancillary, original and
+# **** derived data. We assume that eventually the IDC version will be a single identifier, and which maps to such a
+# **** tuple. For continuity, we currently return a single IDC version, "1", and the underlying tuple.
+@api_auth
 @require_http_methods(["GET"])
-def public_program_list_api(request):
+def versions_list_api(request):
 
-    programs = Program.objects.filter(is_public=True)
+    idc_data_versions = ImagingDataCommonsVersion.objects.all()
+    # versions = DataVersion.objects.get_queryset()
 
-    programs_info = {"programs": [{
-                "name": program.name,
-                "short_name": program.short_name,
-                "description": program.description,
-                "active": program.active} for program in programs]}
+    programs = Program.get_public_programs()
 
-    return JsonResponse(programs_info)
+    versions_info = {"versions": []}
+    for version in idc_data_versions:
+        version_data = dict(
+                # name = version.name,
+                idc_data_version = version.version_number,
+                # version_uid = version.version_uid,
+                date_active = version.date_active,
+                active = version.active,
+                data_sources = []
+        )
+        for data_source in version.dataversion_set.filter(active=True).get_data_sources().filter(source_type='B').distinct():
+            data_source_data = dict(
+                name = data_source.name,
+                data_type = dict(DataSetType.DATA_TYPES)[data_source.get_data_types().first()]
+
+            )
+            version_data['data_sources'].append(data_source_data)
+
+        version_data["programs"]= [{
+            "name": program.name,
+            "short_name": program.short_name,
+            "description": program.description} for program in programs]
+
+        versions_info["versions"].append(version_data)
+
+    return JsonResponse(versions_info)
 
 
+@api_auth
 @require_http_methods(["GET"])
-def program_detail_api(request, program_name=None ):
+def collections_list_api(request):
     # """ if debug: logger.debug('Called ' + sys._getframe().f_code.co_name) """
 
     try:
+        data_version = get_idc_data_version(request.GET.get('idc_data_version', ''))
+    except:
+        return JsonResponse(
+            dict(
+                message="Invalid IDC version {}".format(request.GET.get('idc_data_version', '')),
+                code=400
+            )
+        )
 
-        program = Program.objects.get(is_public=True, active=True, short_name__iexact=program_name)
+    try:
+        program_name = request.GET.get('program_name', '')
+    except:
+        return JsonResponse(
+            dict(
+                message="Invalid program name {}".format(request.GET.get('program_name', '')),
+                code=400
+            )
+        )
+    collections_info = {"programs": []}
 
-        collections = program.collection_set.all()
+    if program_name:
+        programs = Program.objects.filter(is_public=True, active=True, short_name__iexact=program_name)
+    else:
+        programs = Program.objects.all()
 
-        collections_list = []
-        for collection in collections:
-            dvs = collection.data_versions.all()
-            data = {
-                "name": collection.name,
-                "short_name": collection.short_name,
-                "description": collection.description,
-                "active": collection.active,
-                "is_public": collection.is_public,
-                "owner_id": collection.owner_id,
-                "data_version": [{"name":dv.name,"data_type":dv.data_type, "version":dv.version} for dv in dvs] }
-            collections_list.append(data)
+    for program in programs:
 
-        collections_info = {"collections": collections_list}
+        try:
 
-    except ObjectDoesNotExist as e:
-        logger.error("[ERROR] Specified program does not exist")
-        logger.exception(e)
-        collections_info = {
-            "message": "Specified program does not exist",
-            "code": 400
-        }
-    except Exception as e:
-        logger.error("[ERROR] While trying to retrieve program details")
-        logger.exception(e)
-        collections_info = {
-            "message": "Error while trying to retrieve program details.",
-            "code": 400
-        }
+            # program = Program.objects.get(is_public=True, active=True, short_name__iexact=program_name)
 
+            collections = program.collection_set.all()
+
+            collections_list = []
+            for collection in collections:
+                dvs = collection.data_versions.all()
+                data = {
+                    "collection_id": collection.collection_id,
+                    "description": collection.description,
+                    "date_updated": collection.date_updated,
+                    "subject_count": collection.subject_count,
+                    "image_types": collection.image_types,
+                    "cancer_type": collection.cancer_type,
+                    "doi": collection.doi,
+                    "supporting_data": collection.supporting_data,
+                    "species": collection.species,
+                    "location": collection.location,
+                    "active": collection.active,
+                    "collection_type": dict(collection.COLLEX_TYPES)[collection.collection_type],
+                    "owner_id": collection.owner_id,
+                    "idc_data_versions": ["1.0"]}
+                collections_list.append(data)
+
+            collections_info['programs'].append(
+                {
+                    "program_name": program.short_name,
+                    "collections": collections_list
+                 }
+            )
+
+        except ObjectDoesNotExist as e:
+            logger.error("[ERROR] Specified program does not exist")
+            logger.exception(e)
+            collections_info = {
+                "message": "Specified program {} does not exist".format(program_name),
+                "code": 400
+            }
+        except Exception as e:
+            logger.error("[ERROR] While trying to retrieve program details")
+            logger.exception(e)
+            collections_info = {
+                "message": "Error while trying to retrieve program details.",
+                "code": 400
+            }
     return JsonResponse(collections_info)
 
 
+@api_auth
 @require_http_methods(["GET"])
-def collection_detail_api(request, program_name, collection_name):
-    # """ if debug: logger.debug('Called ' + sys._getframe().f_code.co_name) """
+def attributes_list_api(request):
 
-    collection_info = {}
     try:
-        collection = Collection.objects.get(name=collection_name)
+        data_version = get_idc_data_version(request.GET.get('idc_data_version', ''))
+    except:
+        return JsonResponse(
+            dict(
+                message="Invalid IDC version {}".format(request.GET.get('idc_data_version')),
+                code=400
+            )
+        )
 
-    except ObjectDoesNotExist as e:
-        collection_info = {
-            "message": "Collection {} does not exist".format(collection_name),
-            "code": "",
-        }
+    try:
+        data_source_name = request.GET.get('data_source')
+    except ObjectDoesNotExist:
+        return JsonResponse(
+            dict(
+                message="The  data source, {}, is not part of the specified version {}".format(data_source, data_version),
+                code=400
+            )
+        )
+
+    response = {"data_sources": []}
+
+    # attr_data = source.get_source_attrs(with_set_map=False, for_faceting=False)
+    if data_source_name:
+        sources = data_version.dataversion_set.filter(active=True).get_data_sources().filter(source_type='B') \
+            .filter(name=data_source_name).distinct()
     else:
+        sources = data_version.dataversion_set.filter(active=True).get_data_sources().filter(source_type='B').distinct()
 
-        attribute_type = request.GET['attribute_type']
-        version = ""
-        try:
-            if 'version' in request.GET:
-                version = request.GET["version"]
-                dataVersion = collection.data_versions.get(data_type=attribute_type, version=request.GET["version"])
-            else:
-                dataVersion = collection.data_versions.get(data_type=attribute_type, active=True)
-                version = dataVersion.version
-        except ObjectDoesNotExist as e:
-            collection_info = {
-                "message": "Attribute type/version {}/{} does not exist".format(attribute_type, version),
-                "code": "",
-             }
-        else:
-            try:
-                bq_tables = dataVersion.datasource_set.filter(source_type='B')
 
-                fields = []
-                for table in bq_tables:
-                    for attribute in table.attribute_set.all():
-                        fields.append({
-                            "id": attribute.id,
-                            "name": attribute.name,
-                            "display_name": attribute.display_name,
-                            "description": attribute.description,
-                            "data_type": attribute.data_type,
-                            "active": attribute.active,
-                            "preformatted_values": attribute.preformatted_values,
-                            "bq_table": table.name
-                            # } for attribute in attributes ]
-                        })
+    for source in sources:
+        # attributes = Attribute.objects.all()
+        attributes = source.get_attr(for_faceting=False)
 
-                collection_info = {"collection":{
-                    "collection_name": collection_name,
-                    "attribute_type": attribute_type,
-                    "version": version,
-                    "active": dataVersion.active,
-                    "fields": fields
-                }}
+        attributes_info = []
+        for attribute in attributes:
+            if 'clinical_' in attribute.name:
+                pass
+            attribute_info = {
+                "name": attribute.name,
+                "data_type": dict(Attribute.DATA_TYPES)[attribute.data_type],
+                "active": attribute.active,
+                "units": attribute.units,
+                "idc_data_version": data_version.version_number
+            }
+            attributes_info.append(attribute_info)
+            if attribute_info['data_type'] == 'Continuous Numeric':
+                for suffix in ['lt', 'lte', 'btw', 'gte', 'gt']:
+                    attribute_info_copy = dict(attribute_info)
+                    attribute_info_copy['name'] = '{}_{}'.format(attribute.name, suffix)
+                    attributes_info.append(attribute_info_copy)
+        data_source = {
+            "data_source": source.name,
+            'attributes': attributes_info
+        }
+        response["data_sources"].append(data_source)
 
-            except ObjectDoesNotExist as e:
-                collection_info = {
-                    "message": "Program/collection {}/{} does not exist".format(program_name, collection_name),
-                    "code": 400,
-                }
 
-    return JsonResponse(collection_info)
+    return JsonResponse(response)
+
 
 

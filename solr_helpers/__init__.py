@@ -59,7 +59,7 @@ def query_solr_and_format_result(query_settings, normalize_facets=True, normaliz
             if normalize_facets:
                 formatted_query_result['facets'] = {}
                 for facet in result['facets']:
-                    if facet != 'count' and facet != 'unique_count':
+                    if facet != 'count' and facet != 'unique_count' and not (re.search('^unique_',facet)) :
                         facet_counts = result['facets'][facet]
                         if 'buckets' in facet_counts:
                             # This is a term facet
@@ -78,10 +78,18 @@ def query_solr_and_format_result(query_settings, normalize_facets=True, normaliz
                                 formatted_query_result['facets'][facet_name][facet_range] = facet_counts
                             else:
                                 formatted_query_result['facets'][facet_name][facet_range] = facet_counts['unique_count'] if 'unique_count' in facet_counts else facet_counts['count']
+                    elif (re.search('^unique_',facet)):
+                        newFacet = facet.replace('^unique_','')
+                        if not('uniques' in formatted_query_result):
+                            formatted_query_result['uniques'] ={}
+                        formatted_query_result['uniques'][newFacet] = result['facets'][facet]
+
             else:
                 formatted_query_result['facets'] = result['facets']
         elif 'facet_counts' in result:
                 formatted_query_result['facets'] = result['facet_counts']['facet_fields']
+
+        formatted_query_result['nextCursor'] = result.get('nextCursorMark',None)
 
     except Exception as e:
         logger.error("[ERROR] While querying solr and formatting result:")
@@ -91,7 +99,8 @@ def query_solr_and_format_result(query_settings, normalize_facets=True, normaliz
 
 
 # Execute a POST request to the solr server available available at settings.SOLR_URI
-def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets=None, sort=None, counts_only=True, collapse_on=None, offset=0, limit=1000, unique=None):
+def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets=None, sort=None, counts_only=True,
+               collapse_on=None, offset=0, limit=1000, uniques=None, with_cursor=None):
     query_uri = "{}{}/query".format(SOLR_URI, collection)
 
     payload = {
@@ -103,12 +112,27 @@ def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets
         }
     }
 
+    if with_cursor:
+        payload['params']['cursorMark'] = with_cursor
+        del payload['offset']
+
     if facets:
         payload['facet'] = facets
-    if unique:
+    if uniques:
         if not facets:
             payload['facet'] = {}
-        payload['facet']['unique_count'] = "unique({})".format(unique)
+        ufield =  uniques.pop(0)
+        for x in uniques:
+            payload['facet']['unique_{}'.format(x)] = {
+                'type': 'terms',
+                'field': ufield,
+                'limit': -1,
+                'missing': True,
+                'facet': {
+                    'unique_count': 'unique({})'.format(x)
+                }
+            }
+
     if fields:
         payload['fields'] = fields
     if sort:
@@ -129,6 +153,7 @@ def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets
 
     try:
         start = time.time()
+
         query_response = requests.post(query_uri, data=json.dumps(payload), headers={'Content-type': 'application/json'}, auth=(SOLR_LOGIN, SOLR_PASSWORD), verify=SOLR_CERT)
         stop = time.time()
 
@@ -293,6 +318,11 @@ def build_solr_facets(attrs, filter_tags=None, include_nulls=True, unique=None, 
                         'max': "max({})".format(attr.name),
                     }
                 }
+                if filter_tags and attr.name in filter_tags:
+                    min_max_name="{}:min_max".format(attr.name)
+                    if not 'domain' in facets[min_max_name]:
+                        facets[min_max_name]['domain'] = {}
+                    facets[min_max_name]['domain']["excludeTags"] = filter_tags[attr.name]
         else:
             facets[attr.name] = {
                 'type': facet_type,
@@ -414,7 +444,9 @@ def build_solr_query(filters, comb_with='OR', with_tags_for_ex=False, subq_join_
 
     # All other filters
     for attr, values in list(main_filters.items()):
-        attr_name = attr[:attr.rfind('_')] if re.search('_[gl]t[e]|_btw',attr) else attr
+        attr_name = attr[:attr.rfind('_')] if re.search('_[gl]t[e]|_e?btwe?',attr) else attr
+        attr_rng = attr[attr.rfind('_')+1:] if re.search('_[gl]t[e]|_e?btwe?', attr) else ''
+
         query_str = ''
 
         if type(values) is dict and 'values' in values:
@@ -446,19 +478,22 @@ def build_solr_query(filters, comb_with='OR', with_tags_for_ex=False, subq_join_
             query_str += (('-(-(%s) +(%s:{* TO *}))' % (clause, attr)) if with_none else "+({})".format(clause))
 
         elif attr in ranged_attrs or attr[:attr.rfind('_')] in ranged_attrs:
+            bounds = ("[" if re.search('^ebtwe?',attr_rng) else "{{","]" if re.search('e?btwe$',attr_rng) else "}}",)
+            rngTemp = "{}:%s{} TO {}%s" % bounds
+
             clause = ""
             with_none = False
             if 'None' in values:
                 values.remove('None')
                 with_none = True
 
-            if len(values) == 1 and re.match(r'\d+ [tT][oO] \d+', values[0]):
-                values = values[0].lower().split(" to ")
-            if len(values) > 1 and type(values[0]) is list:
+            if len(values) >= 1 and type(values[0]) is str and re.match(r'\d+ [tT][oO] \d+', values[0]):
+                values[0] = values[0].lower().split(" to ")
+            elif len(values) >= 1 and type(values[0]) is list:
                 clause = " {} ".format(comb_with).join(
-                    ["{}:[{} TO {}]".format(attr_name, str(x[0]), str(x[1])) for x in values])
+                    [rngTemp.format(attr_name, str(x[0]), str(x[1])) for x in values])
             elif len(values) > 1 :
-                clause = "{}:[{} TO {}]".format(attr_name, values[0], values[1])
+                clause = rngTemp.format(attr_name, values[0], values[1])
             else:
                 clause = "{}:{}".format(attr_name, values[0])
 
@@ -482,11 +517,11 @@ def build_solr_query(filters, comb_with='OR', with_tags_for_ex=False, subq_join_
         if with_tags_for_ex:
             filter_tags = filter_tags or {}
             tag = "f{}".format(str(count))
-            filter_tags[attr] = tag
+            filter_tags[attr_name] = tag
             query_str = ("{!tag=%s}" % tag)+query_str
             count += 1
 
-        query_set[attr] = query_str
+        query_set[attr_name] = query_str
 
     return {
         'queries': query_set,

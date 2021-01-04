@@ -30,10 +30,10 @@ import datetime
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from .models import Cohort, Cohort_Perms, Filter, Filter_Group
-from idc_collections.models import Program, Attribute, DataVersion, DataSourceJoin
+from idc_collections.models import Program, Attribute, ImagingDataCommonsVersion, DataSourceJoin
 from google_helpers.bigquery.cohort_support import BigQueryCohortSupport
 from google_helpers.bigquery.bq_support import BigQuerySupport
-
+from idc_collections.collex_metadata_utils import get_collex_metadata
 
 logger = logging.getLogger('main_logger')
 BLACKLIST_RE = settings.BLACKLIST_RE
@@ -45,35 +45,36 @@ def _delete_cohort(user, cohort_id):
 
     try:
         cohort = Cohort.objects.get(id=cohort_id)
+        try:
+            Cohort_Perms.objects.get(user=user, cohort=cohort, perm=Cohort_Perms.OWNER)
+            try:
+                cohort = Cohort.objects.get(id=cohort_id, active=True)
+                cohort.active = False
+                cohort.save()
+                cohort_info = {
+                    'notes': 'Cohort {} (\'{}\') has been deleted.'.format(cohort_id, cohort.name),
+                    'data': {'filters': cohort.get_filters_as_dict()},
+                }
+            except ObjectDoesNotExist:
+                cohort_info = {
+                    'message': 'Cohort ID {} has already been deleted.'.format(cohort_id)
+                }
+        except ObjectDoesNotExist:
+            cohort_info = {
+                'message': "{} isn't the owner of cohort ID {} and so cannot delete it.".format(user.email, cohort_id),
+                'delete_permission': False
+            }
     except ObjectDoesNotExist:
         cohort_info = {
             'message': "A cohort with the ID {} was not found!".format(cohort_id),
         }
-    try:
-        Cohort_Perms.objects.get(user=user, cohort=cohort, perm=Cohort_Perms.OWNER)
-    except ObjectDoesNotExist:
-        cohort_info = {
-            'message': "{} isn't the owner of cohort ID {} and so cannot delete it.".format(user.email, cohort.id),
-            'delete_permission': False
-        }
-    if not cohort_info:
-        try:
-            cohort = Cohort.objects.get(id=cohort_id, active=True)
-            cohort.active = False
-            cohort.save()
-            cohort_info = {
-                'notes': 'Cohort {} (\'{}\') has been deleted.'.format(cohort_id, cohort.name),
-                'data': {'filters': cohort.get_filters_as_dict()},
-            }
-        except ObjectDoesNotExist:
-            cohort_info = {
-                'message': 'Cohort ID {} has already been deleted.'.format(cohort_id)
-            }
     return cohort_info
 
 
-def _save_cohort(user, filters=None, name=None, cohort_id=None, versions=None, desc=None, case_insens=True):
+def _save_cohort(user, filters=None, name=None, cohort_id=None, version=None, desc=None, case_insens=True):
     cohort_info = {}
+    cohort = None
+    new_cohort = bool(cohort_id is None)
 
     try:
         if not filters or not len(filters):
@@ -113,16 +114,13 @@ def _save_cohort(user, filters=None, name=None, cohort_id=None, versions=None, d
         # Set permission for user to be owner
         perm = Cohort_Perms(cohort=cohort, user=user, perm=Cohort_Perms.OWNER)
         perm.save()
-    
+
+        # If the version isn't specified, assume the version
+        version = version or ImagingDataCommonsVersion.objects.get(active=True)
+
         # For now, any set of filters in a cohort is a single 'group'; this allows us to, in the future,
         # let a user specify a different operator between groups (eg. (filter a AND filter b) OR (filter c AND filter D)
-        grouping = Filter_Group.objects.create(resulting_cohort=cohort, operator=Filter_Group.AND)
-
-        # If versions aren't specified, assume active versions
-        versions = versions or DataVersion.objects.filter(active=True)
-
-        for v in versions:
-            grouping.data_versions.add(v)
+        grouping = Filter_Group.objects.create(resulting_cohort=cohort, operator=Filter_Group.AND, data_version=version)
 
         filter_attr = Attribute.objects.filter(id__in=filters.keys())
 
@@ -130,7 +128,7 @@ def _save_cohort(user, filters=None, name=None, cohort_id=None, versions=None, d
 
         for attr in filter_attr:
             filter_values = filters[str(attr.id)]
-            filter_set.append(Filter(resulting_cohort=cohort, attribute=attr, value=",".join(filter_values), filter_group=grouping))
+            filter_set.append(Filter(resulting_cohort=cohort, attribute=attr, value=",".join([str(x) for x in filter_values]), filter_group=grouping))
 
         Filter.objects.bulk_create(filter_set)
 
@@ -143,9 +141,30 @@ def _save_cohort(user, filters=None, name=None, cohort_id=None, versions=None, d
     except Exception as e:
         logger.error("[ERROR] While saving a cohort: ")
         logger.exception(e)
+        # if we were in the process of making a cohort, delete it; it might be malformed
+        if cohort and new_cohort:
+            cohort.delete()
+        cohort_info['message'] = "Failed to save cohort!"
     
     return cohort_info
 
+def cohort_manifest(cohort, user, fields, limit, offset):
+    try:
+        sources = cohort.get_data_sources()
+        versions = cohort.get_data_versions()
+
+        group_filters = cohort.get_filters_as_dict()
+
+        filters = {x['name']: x['values'] for x in group_filters[0]['filters']}
+
+        cohort_records = get_collex_metadata(
+            filters, fields, limit, offset, sources=sources, versions=versions, counts_only=False,
+            collapse_on='SOPInstanceUID', records_only=True, sort="PatientID asc, StudyInstanceUID asc, SeriesInstanceUID asc, SOPInstanceUID asc")
+        
+        return cohort_records
+        
+    except Exception as e:
+        logger.exception(e)
 
 
 # Get the various UUIDs for a given cohort

@@ -242,6 +242,32 @@ class BigQuerySupport(BigQueryABC):
                 'status': 'TABLE_EXISTS'
             }
 
+    # Apply a dataViewer IAM role to the specified user
+    def set_table_access(self, user_email):
+        this_table_policy = self.bq_service.tables().getIamPolicy(
+            resource="projects/{}/datasets/{}/tables/{}".format(self.project_id, self.dataset_id, self.table_id),
+            body={}
+        ).execute(
+            num_retries=5
+        )
+
+        this_table_policy['bindings'] = [
+            {
+                "role": "roles/bigquery.dataViewer",
+                "members": [
+                    "user:{}".format(user_email)
+                ]
+            }
+        ]
+        this_table_policy['version'] = 1
+
+        self.bq_service.tables().setIamPolicy(
+            resource="projects/{}/datasets/{}/tables/{}".format(self.project_id, self.dataset_id, self.table_id),
+            body={'policy':this_table_policy}
+        ).execute(
+            num_retries=5
+        )
+
     # Build and insert a BQ job
     def insert_bq_query_job(self, query,parameters=None, write_disposition='WRITE_EMPTY', cost_est=False):
 
@@ -284,9 +310,10 @@ class BigQuerySupport(BigQueryABC):
     # Runs a basic, optionally parameterized query
     # If self.project_id, self.dataset_id, and self.table_id are set they will be used as the destination table for
     # the query WRITE_DISPOSITION is assumed to be for an empty table unless specified
-    def execute_query(self, query, parameters=None, write_disposition='WRITE_EMPTY', cost_est=False, with_schema=False, paginated=False):
+    def execute_query(self, query, parameters=None, write_disposition='WRITE_EMPTY', cost_est=False, with_schema=False, paginated=False, no_results=False):
 
         query_job = self.insert_bq_query_job(query,parameters,write_disposition,cost_est)
+        logger.debug("query_job: {}".format(query_job))
 
         job_id = query_job['jobReference']['jobId']
 
@@ -304,23 +331,29 @@ class BigQuerySupport(BigQueryABC):
         job_is_done = self.await_job_is_done(query_job)
 
         # Parse the final disposition
-        if job_is_done and job_is_done['status']['state'] == 'DONE':
-            if 'status' in job_is_done and 'errors' in job_is_done['status']:
-                logger.error("[ERROR] During query job {}: {}".format(job_id, str(job_is_done['status']['errors'])))
-                logger.error("[ERROR] Error'd out query: {}".format(query))
-            else:
-                logger.info("[STATUS] Query {} done, fetching results...".format(job_id))
-                if paginated:
-                    query_results = self.fetch_job_result_page(query_job['jobReference'])
-                elif with_schema:
-                    query_results = self.fetch_job_results_with_schema(query_job['jobReference'])
-                else:
-                    query_results = self.fetch_job_results(query_job['jobReference'])
-                logger.info("[STATUS] {} results found for query {}.".format(str(len(query_results)), job_id))
+        if no_results:
+            # Just return the job data. Let the caller decide what to do
+            query_results = job_is_done
         else:
-            logger.error("[ERROR] Query took longer than the allowed time to execute--" +
-                         "if you check job ID {} manually you can wait for it to finish.".format(job_id))
-            logger.error("[ERROR] Timed out query: {}".format(query))
+            if job_is_done and job_is_done['status']['state'] == 'DONE':
+                if 'status' in job_is_done and 'errors' in job_is_done['status']:
+                    logger.error("[ERROR] During query job {}: {}".format(job_id, str(job_is_done['status']['errors'])))
+                    logger.error("[ERROR] Error'd out query: {}".format(query))
+                else:
+                    logger.info("[STATUS] Query {} done, fetching results...".format(job_id))
+                    if paginated:
+                        query_results = self.fetch_job_result_page(query_job['jobReference'])
+                        logger.info("[STATUS] {} results found for query {}.".format(str(query_results['totalFound']), job_id))
+                    elif with_schema:
+                        query_results = self.fetch_job_results_with_schema(query_job['jobReference'])
+                        logger.info("[STATUS] {} results found for query {}.".format(str(len(query_results['results'])), job_id))
+                    else:
+                        query_results = self.fetch_job_results(query_job['jobReference'])
+                        logger.info("[STATUS] {} results found for query {}.".format(str(len(query_results)), job_id))
+            else:
+                logger.error("[ERROR] Query took longer than the allowed time to execute--" +
+                             "if you check job ID {} manually you can wait for it to finish.".format(job_id))
+                logger.error("[ERROR] Timed out query: {}".format(query))
 
         if 'statistics' in job_is_done and 'query' in job_is_done['statistics'] and 'timeline' in \
                 job_is_done['statistics']['query']:
@@ -352,17 +385,23 @@ class BigQuerySupport(BigQueryABC):
 
     # TODO: shim until we have time to rework this into a single method
     # Fetch the results of a job based on the reference provided
-    def fetch_job_result_page(self, job_ref, page_token=None):
+    def fetch_job_result_page(self, job_ref, page_token=None, maxResults=settings.MAX_BQ_RECORD_RESULT):
 
         page = self.bq_service.jobs().getQueryResults(
             pageToken=page_token,
+            maxResults=maxResults,
             **job_ref).execute(num_retries=2)
 
         schema = page['schema']
         totalFound = page['totalRows']
         next_page = page.get('pageToken')
 
-        return {'current_page_rows': page['rows'], 'job_reference': job_ref, 'schema': schema, 'totalFound': totalFound, 'next_page': next_page}
+        return {
+            'current_page_rows': page['rows'] if 'rows' in page else [],
+            'job_reference': job_ref,
+            'schema': schema,
+            'totalFound': totalFound,
+            'next_page': next_page}
 
 
     # TODO: shim until we have time to rework this into a single method
@@ -438,9 +477,9 @@ class BigQuerySupport(BigQueryABC):
 
     # Execute a query, optionally parameterized, and fetch its results
     @classmethod
-    def execute_query_and_fetch_results(cls, query, parameters=None, with_schema=False, paginated=False):
+    def execute_query_and_fetch_results(cls, query, parameters=None, with_schema=False, paginated=False, no_results=False):
         bqs = cls(None, None, None)
-        return bqs.execute_query(query, parameters, with_schema=with_schema, paginated=paginated)
+        return bqs.execute_query(query, parameters, with_schema=with_schema, paginated=paginated, no_results=no_results)
 
     @classmethod
     # Execute a query, optionally parameterized, to be saved on a temp table
@@ -472,6 +511,13 @@ class BigQuerySupport(BigQueryABC):
     def get_job_results(cls, job_reference):
         bqs = cls(None, None, None)
         return bqs.fetch_job_results(job_reference)
+
+    # Given a job reference for a running job, await the completion,
+    # then fetch and return the results
+    @classmethod
+    def wait_for_done(cls, query_job):
+        bqs = cls(None, None, None)
+        return bqs.await_job_is_done(query_job)
 
     # Given a job reference for a running job, await the completion,
     # then fetch and return the results
@@ -509,9 +555,9 @@ class BigQuerySupport(BigQueryABC):
         return results['schema']
 
     @classmethod
-    def get_job_result_page(cls, job_ref, page_token):
+    def get_job_result_page(cls, job_ref, page_token, maxResults=settings.MAX_BQ_RECORD_RESULT):
         bqs = cls(None, None, None)
-        page = bqs.fetch_job_result_page(job_ref,page_token)
+        page = bqs.fetch_job_result_page(job_ref, page_token, maxResults=maxResults)
         return page
     
     # Method for submitting a group of jobs and awaiting the results of the whole set
@@ -565,12 +611,16 @@ class BigQuerySupport(BigQueryABC):
     #     eg. {"age_at_diagnosis_gte": [50,]}
     # Support for BETWEEN via _btw in attr name, eg. ("wbc_at_diagnosis_btw": [800,1200]}
     # Support for providing an explicit schema of the fields being searched
+    # Support for specifying a set of continuous numeric attributes to be presumed for BETWEEN clauses
     #
     # TODO: add support for DATETIME eg 6/10/2010
     @staticmethod
-    def build_bq_filter_and_params(filters, comb_with='AND', param_suffix=None, with_count_toggle=False, field_prefix=None, type_schema=None, case_insens=True):
-        if field_prefix[-1] != ".":
+    def build_bq_filter_and_params(filters, comb_with='AND', param_suffix=None, with_count_toggle=False,
+                                   field_prefix=None, type_schema=None, case_insens=True, continuous_numerics=None):
+        if field_prefix and field_prefix[-1] != ".":
             field_prefix += "."
+
+        continuous_numerics = continuous_numerics or []
 
         result = {
             'filter_string': '',
@@ -645,17 +695,27 @@ class BigQuerySupport(BigQueryABC):
 
         # Standard query filters
         for attr, values in list(other_filters.items()):
+            is_btw = re.search('_e?btwe?', attr.lower()) is not None
+            attr_name = attr[:attr.rfind('_')] if re.search('_[gl]te?|_e?btwe?', attr) else attr
+            # We require out attributes to be value lists
             if type(values) is not list:
                 values = [values]
+            # However, *only* ranged numerics can be a list of lists; all others must be a single list
+            else:
+                if type(values[0]) is list and not is_btw and attr not in continuous_numerics:
+                    values = [y for x in values for y in x]
 
             parameter_type = None
-            if type_schema and attr in type_schema and type_schema[attr]:
-                parameter_type = ('INT64' if type_schema[attr] == 'INTEGER' else 'STRING')
+            if type_schema and type_schema.get(attr,None):
+                parameter_type = ('NUMERIC' if type_schema[attr] != 'STRING' else 'STRING')
             else:
+                # If the values are arrays we assume the first value in the first array is indicative of all
+                # other values (since we don't support multi-typed fields)
+                type_check = values[0] if type(values[0]) is not list else values[0][0]
                 parameter_type = (
                     'STRING' if (
-                        type(values[0]) is not int and re.compile(r'[^0-9\.,]', re.UNICODE).search(values[0])
-                    ) else 'INT64'
+                        type(type_check) not in [int,float,complex] and re.compile(r'[^0-9\.,]', re.UNICODE).search(type_check)
+                    ) else 'NUMERIC'
                 )
 
             filter_string = ''
@@ -672,50 +732,64 @@ class BigQuerySupport(BigQueryABC):
             if len(values) > 0:
                 if len(filter_string):
                     filter_string += " OR "
-                if len(values) == 1:
-                    # Scalar param
+                if len(values) == 1 and not is_btw:
+                    # Single scalar param
                     query_param['parameterValue']['value'] = values[0]
                     if query_param['parameterType']['type'] == 'STRING':
                         if '%' in values[0] or case_insens:
-                            filter_string += "LOWER({}{}) LIKE LOWER(@{})".format('' if not field_prefix else field_prefix, attr, param_name)
+                            filter_string += "LOWER({}{}) LIKE LOWER(@{})".format('' if not field_prefix else field_prefix, attr_name, param_name)
                         else:
                             filter_string += "{}{} = @{}".format('' if not field_prefix else field_prefix, attr,
                                                                  param_name)
-                    elif query_param['parameterType']['type'] == 'INT64':
-                        if attr.endswith('_gt') or attr.endswith('_gte'):
-                            filter_string += "{}{} >{} @{}".format(
-                                '' if not field_prefix else field_prefix, attr[:attr.rfind('_')],
-                                '=' if attr.endswith('_gte') else '',
-                                param_name
-                            )
-                        elif attr.endswith('_lt') or attr.endswith('_lte'):
-                            filter_string += "{}{} <{} @{}".format(
-                                '' if not field_prefix else field_prefix, attr[:attr.rfind('_')],
-                                '=' if attr.endswith('_lte') else '',
-                                param_name
-                            )
-                        else:
-                            filter_string += "{}{} = @{}".format(
-                                '' if not field_prefix else field_prefix, attr, param_name
-                            )
-                elif len(values) == 2 and attr.endswith('_btw'):
-                    param_name_1 = param_name + '_btw_1'
-                    param_name_2 = param_name + '_btw_2'
-                    filter_string += "{}{} BETWEEN @{} AND @{}".format(
-                        '' if not field_prefix else field_prefix, attr[:attr.rfind('_')],
-                        param_name_1,
-                        param_name_2
-                    )
-                    query_param_1 = query_param
-                    query_param_2 = copy.deepcopy(query_param)
-                    query_param = [query_param_1, query_param_2, ]
-                    query_param_1['name'] = param_name_1
-                    query_param_1['parameterValue']['value'] = values[0]
-                    query_param_2['name'] = param_name_2
-                    query_param_2['parameterValue']['value'] = values[1]
+                    elif query_param['parameterType']['type'] == 'NUMERIC':
+                        operator = "{}{}".format(
+                            ">" if re.search(r'_gte?',attr) else "<" if re.search(r'_lte?',attr) else "",
+                            '=' if re.search(r'_[lg]te',attr) or not re.search(r'_[gt]',attr) else ''
+                        )
+                        filter_string += "{}{} {} @{}".format(
+                            '' if not field_prefix else field_prefix, attr_name,
+                            operator, param_name
+                        )
+                # Occasionally attributes may come in without the appropriate _e?btwe? suffix; we account for that here
+                # by checking for the proper attr_name in the optional continuous_numerics list
+                elif is_btw or attr_name in continuous_numerics:
+                    # Check for a single array of two and if we find it, convert it to an array containing a 2-member array
+                    if len(values) == 2 and type(values[0]) is not list:
+                        values = [values]
+                    else:
+                        # confirm an array of arrays all contain paired values
+                        all_pairs = True
+                        for x in values:
+                            if len(x) != 2:
+                                all_pairs = False
+                        if not all_pairs:
+                            logger.error("[ERROR] While parsing attribute {}, calculated to be a numeric range filter, found an unparseable value:")
+                            logger.error("[ERROR] {}".format(values))
+                            continue
+                    btw_counter = 1
+                    query_params = []
+                    for btws in values:
+                        param_name_1 = '{}_btw_{}'.format(param_name,btw_counter)
+                        btw_counter+=1
+                        param_name_2 = '{}_btw_{}'.format(param_name,btw_counter)
+                        btw_counter += 1
+                        filter_string += "{}{} BETWEEN @{} AND @{}".format(
+                            '' if not field_prefix else field_prefix, attr_name,
+                            param_name_1,
+                            param_name_2
+                        )
+                        # query_param becomes our template for each pair
+                        query_param_1 = copy.deepcopy(query_param)
+                        query_param_2 = copy.deepcopy(query_param)
+                        query_param_1['name'] = param_name_1
+                        query_param_1['parameterValue']['value'] = btws[0]
+                        query_param_2['name'] = param_name_2
+                        query_param_2['parameterValue']['value'] = btws[1]
+                        query_params.extend([query_param_1, query_param_2,] )
 
+                    query_param = query_params
                 else:
-                    # Array param
+                    # Simple array param
                     query_param['parameterType']['type'] = "ARRAY"
                     query_param['parameterType']['arrayType'] = {
                         'type': parameter_type
@@ -770,8 +844,10 @@ class BigQuerySupport(BigQueryABC):
     @staticmethod
     def build_bq_where_clause(filters, comb_with='AND', field_prefix=None, type_schema=None):
 
-        if field_prefix[-1] != ".":
+        if field_prefix and field_prefix[-1] != ".":
             field_prefix += "."
+        else:
+            field_prefix = ""
 
         filter_set = []
 
@@ -817,12 +893,12 @@ class BigQuerySupport(BigQueryABC):
 
             parameter_type = None
             if type_schema and attr in type_schema and type_schema[attr]:
-                parameter_type = ('INT64' if type_schema[attr] == 'INTEGER' else 'STRING')
+                parameter_type = ('NUMERIC' if type_schema[attr] == 'INTEGER' else 'STRING')
             else:
                 parameter_type = (
                     'STRING' if (
                         type(values[0]) is not int and re.compile(r'[^0-9\.,]', re.UNICODE).search(values[0])
-                    ) else 'INT64'
+                    ) else 'NUMERIC'
                 )
 
             filter_string = ''
@@ -842,7 +918,7 @@ class BigQuerySupport(BigQueryABC):
                         else:
                             filter_string += "{}{} = '{}'".format('' if not field_prefix else field_prefix, attr,
                                                                  values[0])
-                    elif parameter_type == 'INT64':
+                    elif parameter_type == 'NUMERIC':
                         if attr.endswith('_gt') or attr.endswith('_gte'):
                             filter_string += "{}{} >{} {}".format(
                                 '' if not field_prefix else field_prefix, attr[:attr.rfind('_')],

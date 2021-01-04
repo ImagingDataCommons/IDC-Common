@@ -26,7 +26,7 @@ from django.db.models import Count
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.utils.html import escape
-from idc_collections.models import Collection, Attribute, User_Feature_Definitions, DataVersion, DataSource
+from idc_collections.models import Collection, Attribute, User_Feature_Definitions, DataVersion, DataSource, ImagingDataCommonsVersion, Attribute_Display_Values
 from django.core.exceptions import ObjectDoesNotExist
 from sharing.models import Shared_Resource
 from functools import reduce
@@ -100,38 +100,25 @@ class Cohort(models.Model):
 
     # Returns the data versions identified in the filter groups for this cohort
     # Returns a DataVersion QuerySet
-    def get_data_versions(self):
+    def get_data_versions(self, active=None):
 
-        data_versions = None
+        data_versions = ImagingDataCommonsVersion.objects.filter(id__in=self.filter_group_set.all().values_list('data_version',flat=True)) \
+            if active is None else ImagingDataCommonsVersion.objects.filter(active=active, id__in=self.filter_group_set.all().values_list('data_version',flat=True))
 
-        groups = self.filter_group_set.all()
-
-        for group in groups:
-            data_versions = (data_versions | group.data_versions.all()) if data_versions else group.data_versions.all()
-
-        return data_versions
+        return data_versions.distinct()
 
     # Returns the list of data sources used by this cohort, as a function of the filters which define it
     # Return values can be
-    def get_data_sources(self, source_type=None):
-        result = {}
+    def get_data_sources(self, source_type=DataSource.SOLR, active=None):
 
         cohort_filters = Filter.objects.select_related('attribute').filter(resulting_cohort=self)
         attributes = Attribute.objects.filter(id__in=cohort_filters.values_list('attribute', flat=True))
 
-        data_versions = self.get_data_versions()
+        data_versions = self.get_data_versions(active=active)
 
-        for attr in attributes:
-            for source in DataSource.SOURCE_TYPES:
-                if not source_type or source_type == source[0]:
-                    data_sources = attr.data_sources.all().filter(version__in=data_versions, source_type=source[0]).distinct()
-                    for data_source in data_sources:
-                        if source[0] not in result:
-                            result[source[0]] = {data_source.id: data_source}
-                        else:
-                            if data_source.id not in result[source[0]]:
-                                result[source[0]][data_source.id] = data_source
-        return result
+        sources = attributes.get_data_sources(data_versions, source_type)
+
+        return sources
 
     # Returns the set of filters defining this cohort as a dict organized by data source
     def get_filters_by_data_source(self, source_type=None):
@@ -150,6 +137,19 @@ class Cohort(models.Model):
 
         return result
 
+
+    # Returns a dict of the filters defining this cohort organized by filter group
+    def get_filters_as_dict_simple(self):
+        result = []
+
+        filter_groups = self.filter_group_set.all()
+
+        for fg in filter_groups:
+            filter_group = fg.filter_set.all().get_filter_set()
+            result.append(filter_group)
+        return result
+
+
     # Returns a dict of the filters defining this cohort organized by filter group
     def get_filters_as_dict(self):
         result = []
@@ -157,13 +157,33 @@ class Cohort(models.Model):
         filter_groups = self.filter_group_set.all()
 
         for fg in filter_groups:
-            dvs = fg.data_versions.all()
             result.append({
                 'id': fg.id,
-                'data_versions': [x.name for x in dvs],
+                'data_version': fg.data_version.get_display(),
                 'filters': fg.filter_set.all().get_filter_set_array()
             })
         return result
+
+    def get_filter_display_string(self, prefix=None):
+        filter_groups = self.filter_group_set.all()
+        filter_sets = []
+
+        attr_dvals = Attribute_Display_Values.objects.select_related('attribute').filter(
+            attribute__id__in=Attribute.objects.filter(id__in=self.get_attr_list())
+        ).to_dict()
+
+        for fg in filter_groups:
+            filters = fg.filter_set.all().get_filter_set_array()
+            group_filters = {x['display_name']: [attr_dvals.get(x['id'],{}).get(y,y) for y in x['values']] for x in filters}
+
+            filter_sets.append(BigQuerySupport.build_bq_where_clause(
+                group_filters, field_prefix=prefix
+            ))
+
+        return " AND ".join(filter_sets).replace("AnatomicRegionSequence","AnatomicRegion")
+
+    def get_attr_list(self):
+        return self.filter_set.select_related('attribute').all().values_list('attribute__id',flat=True)
 
     # Produce a BigQuery filter WHERE clause for this cohort's filters that can be used in the BQ console
     def get_bq_filter_string(self, prefix=None):
@@ -173,11 +193,12 @@ class Cohort(models.Model):
         group_filter_dict = self.get_filters_as_dict()
 
         for group in group_filter_dict:
+            group_filters = {x['name']: [y for y in x['values']] for x in group['filters']}
             filter_sets.append(BigQuerySupport.build_bq_where_clause(
-                group_filter_dict[group], field_prefix=prefix
+                group_filters, field_prefix=prefix
             ))
 
-        return filter_sets
+        return " AND ".join(filter_sets)
 
     # Produce a BigQuery filter clause and parameters; this is for *programmatic* use of BQ, NOT copy-paste into
     # the console
@@ -188,10 +209,11 @@ class Cohort(models.Model):
         group_filter_dict = self.get_filters_as_dict()
 
         for group in group_filter_dict:
+            group_filters = {x['name']: [y for y in x['values']] for x in group['filters']}
             filter_sets.append(BigQuerySupport.build_bq_filter_and_params(
-                group_filter_dict[group], field_prefix=prefix, param_suffix=suffix, with_count_toggle=counts,
+                group_filters, field_prefix=prefix, param_suffix=suffix, with_count_toggle=counts,
                 type_schema=schema
-                  ))
+             ))
 
         return filter_sets
 
@@ -251,7 +273,7 @@ class Filter_Group(models.Model):
     id = models.AutoField(primary_key=True)
     resulting_cohort = models.ForeignKey(Cohort, null=False, blank=False, on_delete=models.CASCADE)
     operator = models.CharField(max_length=1, blank=False, null=False, choices=OPS, default=OR)
-    data_versions = models.ManyToManyField(DataVersion)
+    data_version = models.ForeignKey(ImagingDataCommonsVersion, on_delete=models.CASCADE, null=True)
 
     def get_filter_set(self):
         return self.filter_set.all().get_filter_set()
@@ -280,6 +302,7 @@ class FilterQuerySet(models.QuerySet):
             filters.append({
                 'id': fltr.attribute.id,
                 'name': ("{}{}".format(fltr.name.lower(),fltr.numeric_op)) if fltr.numeric_op else fltr.attribute.name,
+                'display_name': fltr.attribute.display_name,
                 'values': fltr.value.split(fltr.value_delimiter)
             })
         return filters
