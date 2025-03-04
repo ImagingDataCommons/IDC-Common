@@ -835,6 +835,7 @@ def create_file_manifest(request, cohort=None):
                         hdr = "{}Manifest for cohort '{}'{}".format(cmt_delim, cohort.name, linesep)
                     elif header == 'user_email' and request.user.is_authenticated:
                         hdr = "{}User: {}{}".format(cmt_delim, request.user.email, linesep)
+                    #filters may not be defined or sent if this is a cart manifest
                     elif header == 'cohort_filters' and not from_cart:
                         filter_str = cohort.get_filter_display_string() if cohort else BigQuerySupport.build_bq_where_clause(filters)
                         hdr = "{}Filters: {}{}".format(cmt_delim, filter_str, linesep)
@@ -1816,7 +1817,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
     return [num_found, table_arr]
 
 
-def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries,results_lvl='StudyInstanceUID'):
+def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries,results_lvl='StudyInstanceUID', with_records=True):
     aggregate_level = "StudyInstanceUID"
     versions=ImagingDataCommonsVersion.objects.filter(
         active=True
