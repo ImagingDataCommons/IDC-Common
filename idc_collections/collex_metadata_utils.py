@@ -647,7 +647,7 @@ def parse_partition_to_filter(cart_partition):
 
 
 # Manifest types supported: s5cmd, idc_index, json.
-def submit_manifest_job(data_version, filters, storage_loc, manifest_type, instructions, fields, cart_partition=None):
+def submit_manifest_job(data_version, filters, storage_loc, manifest_type, instructions, fields, cart_partition=None, filename=None):
     cart_filters = parse_partition_to_filter(cart_partition) if cart_partition else None
     child_records = None if cart_filters else "StudyInstanceUID"
     service_account_info = json.load(open(settings.GOOGLE_APPLICATION_CREDENTIALS))
@@ -664,7 +664,7 @@ def submit_manifest_job(data_version, filters, storage_loc, manifest_type, instr
             datetime.datetime.fromtimestamp(timestamp).strftime('%H:%M:%S %Y/%m/%d')
         ) + "# {} \n".format(data_version_display) + "{instructions}"
 
-    file_name = "manifest_{}.s5cmd".format(datetime.datetime.fromtimestamp(timestamp).strftime('%Y%m%d_%H%M%S'))
+    file_name = filename or "manifest_{}.s5cmd".format(datetime.datetime.fromtimestamp(timestamp).strftime('%Y%m%d_%H%M%S'))
 
     reformatted_fields = [
         "CONCAT('cp s3://',{storage_loc},'/',crdc_series_uuid,'/* ./') AS series".format(storage_loc=storage_loc)]
@@ -745,36 +745,37 @@ def create_file_manifest(request, cohort=None):
             versions = cohort.get_data_versions()
             group_filters = cohort.get_filters_as_dict()
             filters = {x['name']: x['values'] for x in group_filters[0]['filters']}
-        elif from_cart:
-            partitions = json.loads(req.get('partitions', '[]'))
-            filtergrp_list = json.loads(req.get('filtergrp_list', '[{}]'))
-            versions = json.loads(req.get('versions', '[]'))
-            mxseries = int(req.get('mxseries', '0'))
-            mxstudies = int(req.get('mxstudies', '0'))
         else:
-            filters = json.loads(req.get('filters', '{}'))
-            if not (len(filters)):
-                raise Exception("No filters supplied for file manifest!")
-
             versions = json.loads(req.get('versions', '[]'))
+            versions = ImagingDataCommonsVersion.objects.filter(
+                active=True) if not len(versions) else ImagingDataCommonsVersion.objects.filter(version_number__in=versions)
+            if from_cart:
+                partitions = json.loads(req.get('partitions', '[]'))
+                filtergrp_list = json.loads(req.get('filtergrp_list', '[{}]'))
+                versions = json.loads(req.get('versions', '[]'))
+                mxseries = int(req.get('mxseries', '0'))
+                mxstudies = int(req.get('mxstudies', '0'))
+            else:
+                filters = json.loads(req.get('filters', '{}'))
+                if not (len(filters)):
+                    raise Exception("No filters supplied for file manifest!")
+                data_types = [DataSetType.IMAGE_DATA, DataSetType.ANCILLARY_DATA, DataSetType.DERIVED_DATA]
+                source_type = req.get('data_source_type', DataSource.SOLR)
+                data_sets = DataSetType.objects.filter(data_type__in=data_types)
+                sources = data_sets.get_data_sources().filter(
+                    source_type=source_type,
+                    aggregate_level__in=["SeriesInstanceUID"],
+                    id__in=versions.get_data_sources().filter(source_type=source_type).values_list("id", flat=True)
+                ).distinct()
 
-            data_types = [DataSetType.IMAGE_DATA, DataSetType.ANCILLARY_DATA, DataSetType.DERIVED_DATA]
-            source_type = req.get('data_source_type', DataSource.SOLR)
-            versions = ImagingDataCommonsVersion.objects.filter(active=True) if not versions else ImagingDataCommonsVersion.objects.filter(version_number__in=versions)
-
-            data_sets = DataSetType.objects.filter(data_type__in=data_types)
-            sources = data_sets.get_data_sources().filter(
-                source_type=source_type,
-                aggregate_level__in=["SeriesInstanceUID"],
-                id__in=versions.get_data_sources().filter(source_type=source_type).values_list("id", flat=True)
-            ).distinct()
+        print("File type: {}".format(file_type))
 
         if file_type in ['s5cmd', 'idc_index']:
             api_loc = "https://s3.amazonaws.com" if loc == 'aws' else "https://storage.googleapis.com"
             cmd = "# idc download <manifest file name>{}".format(os.linesep)
             install = "the idc-index (https://github.com/ImagingDataCommons/idc-index) python package:{}".format(
                 os.linesep) + "# pip install --upgrade idc-index"
-            if file_type in ['s5cmd', 'idc_index']:
+            if file_type in ['s5cmd']:
                 cmd = "# s5cmd --no-sign-request --endpoint-url {} run <manifest file name>{}".format(api_loc, os.linesep)
                 install = "s5cmd (https://github.com/peak/s5cmd),"
             instructions = "# To download the files in this manifest, install {}{}".format(install, os.linesep) + \
@@ -785,7 +786,8 @@ def create_file_manifest(request, cohort=None):
         if async_download and (file_type not in ["bq"]):
             jobId, file_name = submit_manifest_job(
                 ImagingDataCommonsVersion.objects.filter(active=True), filters, storage_bucket, file_type, instructions,
-                selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else None, cart_partition=partitions
+                selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else None, cart_partition=partitions,
+                filename=filename
             )
             return JsonResponse({
                 "jobId": jobId,
