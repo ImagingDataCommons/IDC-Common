@@ -567,7 +567,7 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
     return None
 
 
-def filter_manifest(filters, sources, versions, fields, limit, offset, level="SeriesInstanceUID", with_size=False):
+def filter_manifest(filters, sources, versions, fields, limit, offset=0, level="SeriesInstanceUID", with_size=False):
     try:
         custom_facets = None
         search_by = {x: "StudyInstanceUID" for x in filters} if level == "SeriesInstanceUID" else None
@@ -698,10 +698,11 @@ def submit_manifest_job(data_version, filters, storage_loc, manifest_type, instr
 # Creates a file manifest of the supplied Cohort object or filters and returns a StreamingFileResponse
 def create_file_manifest(request, cohort=None):
     response = None
+    req = request.GET or request.POST
+    async_download = bool(req.get('async_download', 'true').lower() == 'true')
     try:
         filters = None
         req = request.GET or request.POST
-        async_download = bool(req.get('async_download', 'true').lower() == 'true')
         manifest = None
         partitions = None
         S5CMD_BASE = "cp s3://{}/{}/* .{}"
@@ -719,19 +720,10 @@ def create_file_manifest(request, cohort=None):
 
         # Columns requested
         selected_columns = json.loads(req.get('columns', '[]'))
-
         selected_columns_sorted = sorted(selected_columns, key=lambda x: field_list.index(x))
-        selected_file_part = 0
 
         selected_header_fields = json.loads(req.get('header_fields', '[]'))
-
         include_header = (req.get('include_header', 'false').lower() == 'true')
-
-        offset = 0
-        if req.get('file_part'):
-            selected_file_part = json.loads(req.get('file_part'))
-            selected_file_part = min(selected_file_part, 9)
-            offset = selected_file_part * MAX_FILE_LIST_ENTRIES
 
         if file_type in ['s5cmd', 'idc_index']:
             field_list = ['crdc_series_uuid', storage_bucket]
@@ -744,13 +736,9 @@ def create_file_manifest(request, cohort=None):
                     field_list.remove(x)
 
         timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H%M%S')
-        file_part_str = "_Part{}".format(selected_file_part + 1) if req.get('file_part') else ""
         loc_type = ("_{}".format(loc)) if file_type in ['s5cmd', 'idc_index'] else ""
         ext = file_type if file_type != 'idc_index' else 's5cmd'
-        if req.get('file_name'):
-            file_name = "{}{}.{}".format(req.get('file_name'), file_part_str, ext)
-        else:
-            file_name = "manifest_{}{}{}.{}".format("cohort_{}_".format(str(cohort.id)) if cohort else "", timestamp, file_part_str, loc_type, ext)
+        file_name = "manifest_{}{}_{}.{}".format("cohort_{}_".format(str(cohort.id)) if cohort else "", timestamp, loc_type, ext)
 
         if cohort:
             sources = cohort.get_data_sources(aggregate_level="SeriesInstanceUID")
@@ -808,7 +796,7 @@ def create_file_manifest(request, cohort=None):
         if from_cart:
             items = get_cart_manifest(filtergrp_list, partitions, mxstudies, mxseries, field_list, MAX_FILE_LIST_ENTRIES)
         else:
-            items = filter_manifest(filters, sources, versions, field_list, MAX_FILE_LIST_ENTRIES, offset, with_size=True)
+            items = filter_manifest(filters, sources, versions, field_list, MAX_FILE_LIST_ENTRIES, with_size=True)
         if 'docs' in items:
             manifest = items['docs']
         if not manifest or len(manifest) <= 0:
