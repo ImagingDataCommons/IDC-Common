@@ -738,7 +738,7 @@ def create_file_manifest(request, cohort=None):
         timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H%M%S')
         loc_type = ("_{}".format(loc)) if file_type in ['s5cmd', 'idc_index'] else ""
         ext = file_type if file_type != 'idc_index' else 's5cmd'
-        file_name = "manifest_{}{}_{}.{}".format("cohort_{}_".format(str(cohort.id)) if cohort else "", timestamp, loc_type, ext)
+        file_name = "manifest_{}{}{}.{}".format("cohort_{}_".format(str(cohort.id)) if cohort else "", timestamp, loc_type, ext)
 
         if cohort:
             sources = cohort.get_data_sources(aggregate_level="SeriesInstanceUID")
