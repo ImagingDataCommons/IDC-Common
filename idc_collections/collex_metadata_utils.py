@@ -847,7 +847,7 @@ def create_file_manifest(request, cohort=None):
                         hdr = "{}Manifest for cohort '{}'{}".format(cmt_delim, cohort.name, linesep)
                     elif header == 'user_email' and request.user.is_authenticated:
                         hdr = "{}User: {}{}".format(cmt_delim, request.user.email, linesep)
-                    elif header == 'cohort_filters':
+                    elif header == 'cohort_filters' and not from_cart:
                         filter_str = cohort.get_filter_display_string() if cohort else BigQuerySupport.build_bq_where_clause(filters)
                         hdr = "{}Filters: {}{}".format(cmt_delim, filter_str, linesep)
                     elif header == 'timestamp':
