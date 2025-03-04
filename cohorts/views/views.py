@@ -86,8 +86,6 @@ BQ_SERVICE = None
 
 logger = logging.getLogger('main_logger')
 
-USER_DATA_ON = settings.USER_DATA_ON
-
 
 def convert(data):
     if isinstance(data, basestring):
