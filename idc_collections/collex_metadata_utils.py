@@ -1828,7 +1828,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
     return [num_found, table_arr]
 
 
-def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries,results_lvl='StudyInstanceUID'):
+def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries,results_lvl='StudyInstanceUID', with_records=True):
     aggregate_level = "StudyInstanceUID"
     versions=ImagingDataCommonsVersion.objects.filter(
         active=True
