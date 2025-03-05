@@ -768,8 +768,6 @@ def create_file_manifest(request, cohort=None):
                     id__in=versions.get_data_sources().filter(source_type=source_type).values_list("id", flat=True)
                 ).distinct()
 
-        print("File type: {}".format(file_type))
-
         if file_type in ['s5cmd', 'idc_index']:
             api_loc = "https://s3.amazonaws.com" if loc == 'aws' else "https://storage.googleapis.com"
             cmd = "# idc download <manifest file name>{}".format(os.linesep)
@@ -848,17 +846,6 @@ def create_file_manifest(request, cohort=None):
                         )
                     elif header == 'total_records':
                         hdr = "{}Total records found: {}{}".format(cmt_delim, str(items['total']), linesep)
-                    if file_type not in ['s5cmd', 'idc_index']:
-                        hdr = [hdr]
-                    rows += (hdr,)
-
-                if items['total'] > MAX_FILE_LIST_ENTRIES:
-                    hdr = "{}NOTE: Due to the limits of our system, we can only return {} manifest entries.".format(
-                        cmt_delim, str(MAX_FILE_LIST_ENTRIES)
-                    ) + " Your cohort's total entries exceeded this number. This part of {} entries has been ".format(
-                        str(MAX_FILE_LIST_ENTRIES)
-                    ) + " downloaded, sorted by PatientID, StudyID, SeriesID, and SOPInstanceUID.{}".format(linesep)
-
                     if file_type not in ['s5cmd', 'idc_index']:
                         hdr = [hdr]
                     rows += (hdr,)
