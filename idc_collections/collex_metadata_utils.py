@@ -787,7 +787,7 @@ def create_file_manifest(request, cohort=None):
             jobId, file_name = submit_manifest_job(
                 ImagingDataCommonsVersion.objects.filter(active=True), filters, storage_bucket, file_type, instructions,
                 selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else None, cart_partition=partitions,
-                filename=filename
+                filename=file_name
             )
             return JsonResponse({
                 "jobId": jobId,
