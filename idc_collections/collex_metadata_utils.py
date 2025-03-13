@@ -646,7 +646,10 @@ def parse_partition_to_filter(cart_partition):
 
 
 # Manifest types supported: s5cmd, idc_index, json.
-def submit_manifest_job(data_version, filters, storage_loc, manifest_type, instructions, fields, from_cart=False, cart_partition=None, filtergrp_list=None, filename=None):
+def submit_manifest_job(
+        data_version, filters, storage_loc, manifest_type, instructions, fields, from_cart=False,
+        cart_partition=None, filtergrp_list=None, filename=None
+    ):
     cart_filters = parse_partition_to_filter(cart_partition) if cart_partition else None
     child_records = None if cart_filters else "StudyInstanceUID"
     service_account_info = json.load(open(settings.GOOGLE_APPLICATION_CREDENTIALS))
@@ -676,12 +679,10 @@ def submit_manifest_job(data_version, filters, storage_loc, manifest_type, instr
         bq_query_and_params = create_cart_sql(cart_partition, filtergrp_list, storage_loc, lvl="series")
     else:
         bq_query_and_params = get_bq_metadata(
-        filters, ["crdc_series_uuid", storage_loc], data_version, fields, ["crdc_series_uuid", storage_loc],
-        no_submit=True, search_child_records_by=child_records,
-        reformatted_fields=reformatted_fields, cart_filters=cart_filters
+            filters, ["crdc_series_uuid", storage_loc], data_version, fields, ["crdc_series_uuid", storage_loc],
+            no_submit=True, search_child_records_by=child_records,
+            reformatted_fields=reformatted_fields, cart_filters=cart_filters
         )
-
-
 
     manifest_job = {
         "query": bq_query_and_params['sql_string'],
@@ -789,7 +790,8 @@ def create_file_manifest(request, cohort=None):
         if async_download and (file_type not in ["bq"]):
             jobId, file_name = submit_manifest_job(
                 ImagingDataCommonsVersion.objects.filter(active=True), filters, storage_bucket, file_type, instructions,
-                selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else None, from_cart=from_cart,cart_partition=partitions, filtergrp_list=filtergrp_list,
+                selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else None, from_cart=from_cart,
+                cart_partition=partitions, filtergrp_list=filtergrp_list,
                 filename=file_name
             )
             return JsonResponse({
@@ -2937,12 +2939,13 @@ def get_bq_metadata(filters, fields, data_version, sources_and_attrs=None, group
             fields.extend(['"{}" AS {}'.format(static_fields[x],x) for x in static_fields])
         if reformatted_fields:
             fields = reformatted_fields
+
         for_union.append(query_base.format(
             field_clause= ",".join(fields),
             table_clause="`{}` {}".format(table_info[image_table]['name'], table_info[image_table]['alias']),
             join_clause=""" """.join(joins),
-            where_clause=(" AND ({})".format((" AND ".join(query_filters) if len(query_filters) else "") if len(filters) else "")) if len(filters) else "",
-            intersect_clause="{}".format("" if not len(intersect_statements) else "{}{}".format(
+            where_clause=(" AND ({})".format(" AND ".join(query_filters))) if len(query_filters) else "",
+            intersect_clause="AND {}".format("" if not len(intersect_statements) else "{}{}".format(
                 " AND " if len(non_related_filters) and len(query_filters) else "", "{} IN ({})".format(
                     child_record_search_field, intersect_clause
             ))),
