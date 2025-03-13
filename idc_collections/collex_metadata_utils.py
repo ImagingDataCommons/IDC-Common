@@ -1,4 +1,3 @@
-#
 # Copyright 2015-2020, Institute for Systems Biology
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -647,7 +646,10 @@ def parse_partition_to_filter(cart_partition):
 
 
 # Manifest types supported: s5cmd, idc_index, json.
-def submit_manifest_job(data_version, filters, storage_loc, manifest_type, instructions, fields, cart_partition=None, filename=None):
+def submit_manifest_job(
+        data_version, filters, storage_loc, manifest_type, instructions, fields, from_cart=False,
+        cart_partition=None, filtergrp_list=None, filename=None
+    ):
     cart_filters = parse_partition_to_filter(cart_partition) if cart_partition else None
     child_records = None if cart_filters else "StudyInstanceUID"
     service_account_info = json.load(open(settings.GOOGLE_APPLICATION_CREDENTIALS))
@@ -673,11 +675,14 @@ def submit_manifest_job(data_version, filters, storage_loc, manifest_type, instr
 
     filters = filters or {}
 
-    bq_query_and_params = get_bq_metadata(
-        filters, ["crdc_series_uuid", storage_loc], data_version, fields, ["crdc_series_uuid", storage_loc],
-        no_submit=True, search_child_records_by=child_records,
-        reformatted_fields=reformatted_fields, cart_filters=cart_filters
-    )
+    if from_cart:
+        bq_query_and_params = create_cart_sql(cart_partition, filtergrp_list, storage_loc, lvl="series")
+    else:
+        bq_query_and_params = get_bq_metadata(
+            filters, ["crdc_series_uuid", storage_loc], data_version, fields, ["crdc_series_uuid", storage_loc],
+            no_submit=True, search_child_records_by=child_records,
+            reformatted_fields=reformatted_fields, cart_filters=cart_filters
+        )
 
     manifest_job = {
         "query": bq_query_and_params['sql_string'],
@@ -705,6 +710,7 @@ def create_file_manifest(request, cohort=None):
         req = request.GET or request.POST
         manifest = None
         partitions = None
+        filtergrp_list = None
         S5CMD_BASE = "cp s3://{}/{}/* .{}"
         file_type = req.get('file_type', 's5cmd').lower()
         loc = req.get('loc_type_{}'.format(file_type), 'aws')
@@ -768,8 +774,6 @@ def create_file_manifest(request, cohort=None):
                     id__in=versions.get_data_sources().filter(source_type=source_type).values_list("id", flat=True)
                 ).distinct()
 
-        print("File type: {}".format(file_type))
-
         if file_type in ['s5cmd', 'idc_index']:
             api_loc = "https://s3.amazonaws.com" if loc == 'aws' else "https://storage.googleapis.com"
             cmd = "# idc download <manifest file name>{}".format(os.linesep)
@@ -786,7 +790,8 @@ def create_file_manifest(request, cohort=None):
         if async_download and (file_type not in ["bq"]):
             jobId, file_name = submit_manifest_job(
                 ImagingDataCommonsVersion.objects.filter(active=True), filters, storage_bucket, file_type, instructions,
-                selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else None, cart_partition=partitions,
+                selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else None, from_cart=from_cart,
+                cart_partition=partitions, filtergrp_list=filtergrp_list,
                 filename=file_name
             )
             return JsonResponse({
@@ -848,17 +853,6 @@ def create_file_manifest(request, cohort=None):
                         )
                     elif header == 'total_records':
                         hdr = "{}Total records found: {}{}".format(cmt_delim, str(items['total']), linesep)
-                    if file_type not in ['s5cmd', 'idc_index']:
-                        hdr = [hdr]
-                    rows += (hdr,)
-
-                if items['total'] > MAX_FILE_LIST_ENTRIES:
-                    hdr = "{}NOTE: Due to the limits of our system, we can only return {} manifest entries.".format(
-                        cmt_delim, str(MAX_FILE_LIST_ENTRIES)
-                    ) + " Your cohort's total entries exceeded this number. This part of {} entries has been ".format(
-                        str(MAX_FILE_LIST_ENTRIES)
-                    ) + " downloaded, sorted by PatientID, StudyID, SeriesID, and SOPInstanceUID.{}".format(linesep)
-
                     if file_type not in ['s5cmd', 'idc_index']:
                         hdr = [hdr]
                     rows += (hdr,)
@@ -1114,7 +1108,10 @@ def parse_partition_string(partition):
     id = partition['id']
     part_str = ''
     for i in range(0,len(id)):
-        part_str = part_str + '(+'+filts[i]+':("'+id[i]+'"))'
+        if (i==0):
+            part_str = part_str + '(+'+filts[i]+':("'+id[i]+'"))'
+        else:
+            part_str = part_str + ' AND (+'+filts[i]+':("'+id[i]+'"))'
     cur_not = partition['not']
     if (len(cur_not)>0):
         cur_not = ['"' + x + '"' for x in cur_not]
@@ -1162,7 +1159,7 @@ def create_cart_query_string(query_list, partitions, join):
         cur_part_str = parse_partition_string(cur_part)
         for j in range(len(cur_part_attr_strA)):
             if (len(cur_part_attr_strA[j])>0):
-                solrA.append('(' + cur_part_str + ')(' + cur_part_attr_strA[j] + ')')
+                solrA.append('(' + cur_part_str + ') AND (' + cur_part_attr_strA[j] + ')')
             else:
                 solrA.append(cur_part_str)
     solrA = ['(' + x + ')' for x in solrA]
@@ -1341,11 +1338,12 @@ def generate_solr_cart_and_filter_strings(current_filters,filtergrp_list, partit
         current_solr_query = build_solr_query(
           copy.deepcopy(current_filters),
           with_tags_for_ex=False,
-          search_child_records_by=None
+          search_child_records_by=None, solr_default_op='AND'
       )
         try:
             current_filt_query_set = create_query_set(current_solr_query, aux_sources, image_source, all_ui_attrs,
                                                   image_source, DataSetType)
+            current_filt_query_set = ['(' + filt + ')' if not filt[0] == '(' else filt for filt in current_filt_query_set]
             current_filt_str = "".join(current_filt_query_set)
         except:
             current_filt_str = ""
@@ -1360,7 +1358,7 @@ def generate_solr_cart_and_filter_strings(current_filters,filtergrp_list, partit
                 solr_query = build_solr_query(
               copy.deepcopy(filtergrp),
               with_tags_for_ex=False,
-              search_child_records_by=None
+              search_child_records_by=None, solr_default_op='AND'
                 )
                 query_set_for_filt = create_query_set(solr_query, aux_sources, image_source, all_ui_attrs, image_source, DataSetType)
                 query_set_for_filt=['(' + filt +')' if not filt[0] == '(' else filt for filt in query_set_for_filt]
@@ -1462,6 +1460,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
             del(current_filters[tblitem])
     [current_filt_str, cart_query_str_all, cart_query_str_studylvl, cart_query_str_serieslvl] = generate_solr_cart_and_filter_strings(current_filters,filtergrp_list,partitions)
     no_tble_item_filt_str = current_filt_str
+
     if len(tblfiltstr)>0:
         current_filt_str = tblfiltstr+current_filt_str
     if len(current_filt_str) > 0:
@@ -1472,6 +1471,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         with_cart = True
     if (tabletype == "collections"):
         sorted_ids = current_filters["collection_id"]
+
 
     elif ("facetfields" in table_data) and (sortarg in table_data["facetfields"]):
         # when sorting by a 'facet' field (# of cases, # of studies etc.), we need to find the set of ids selected from
@@ -1507,8 +1507,14 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         sortStr = sortarg + " " + sortdir
         imgNm= image_source_series.name if (tabletype=="series") else image_source.name
 
+        if (len(current_filt_str)>0):
+            fqs=[current_filt_str]
+        else:
+            fqs=None
+
+
         rng_query = query_solr(
-            collection=imgNm, fields=[id], query_string=current_filt_str, fqs=None,
+            collection=imgNm, fields=[id], query_string=None, fqs=fqs,
             facets=None, sort=sortStr, counts_only=False, collapse_on=collapse_id, offset=offset, limit=limit,
             uniques=None, with_cursor=None, stats=None, totals=None, op='AND'
         )
@@ -1588,15 +1594,18 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
 
     #table attributes need filter query. cart queries come in via stats queries
     fqset = [rngfilt]
+    #fqset = rngfilt
     if len(current_filt_str) > 0:
-        fqset.append("{!tag=f1}(" + current_filt_str + ")")
+        fqset.append("{!tag=f1}(+" + current_filt_str + ")")
+        #fqset = fqset + " AND {!tag=f1}(" + current_filt_str + ")"
+        #fqset.append('{!tag=f1}(+Modality:("RTSTRUCT"))(+collection_id:("4d_lung"))')
 
     attr_results = []
     # if table is collections, don't need attributes only cart stats. if table is series used series store
 
     if not (tabletype =="series") and not (tabletype =="collections"):
         solr_result = query_solr(
-            collection=image_source.name, fields=field_list, query_string=None, fqs=fqset,
+            collection=image_source.name, fields=field_list, query_string=None, fqs=fqset[:],
             facets=None,sort=sortStr, counts_only=False,collapse_on=collapse_id, offset=0, limit=limit,
             uniques=None, with_cursor=None, stats=None, totals=None, op='AND'
         )
@@ -1636,11 +1645,14 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
 
     custom_facets = table_data["facets"]
     fqset = ["{!tag=f0}"+rngfilt]
+    #fqset = "{!tag=f0}" + rngfilt
     colrngfilt=""
     caserngfilt = ""
     seriesrngfilt = ""
+    #fqset=""
     if len(current_filt_str) > 0:
-        fqset.append("{!tag=f1}(" + current_filt_str + ")")
+        #fqset=fqset + "AND {!tag=f1}(" + current_filt_str + ")"
+        fqset.append("{!tag=f1}(+" + current_filt_str + ")")
         custom_facets["per_id_nf"] = copy.deepcopy(table_data["facets_not_filt"]["per_id_nf"])
         with_filter = True
 
@@ -1695,8 +1707,8 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
             custom_facets["upstream_study_filter_cart"] = copy.deepcopy(upstream_cart_facets["upstream_study_filter_cart"])
             custom_facets["upstream_study_filter_cart"]["domain"]["filter"] = studyrngQ+no_tble_item_filt_str
 
-        in_cart_domain_all = {"filter": cart_query_str_all, "excludeTags":"f1"} if with_filter else {"filter": cart_query_str_all}
-        in_filter_and_cart_domain_all = {"filter": cart_query_str_all}
+        in_cart_domain_all = {"filter": '(+'+cart_query_str_all+')', "excludeTags":"f1"} if with_filter else {"filter": '(+'+cart_query_str_all+')'}
+        in_filter_and_cart_domain_all = {"filter": '(+'+cart_query_str_all+')'}
 
 
 
@@ -1710,9 +1722,9 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
 
         if not (cart_query_str_studylvl==None) and (len(cart_query_str_studylvl)>0):
 
-            in_cart_domain_studylvl = {"filter": cart_query_str_studylvl, "excludeTags": "f1"} if with_filter else {
+            in_cart_domain_studylvl = {"filter": '(+'+cart_query_str_studylvl+')', "excludeTags": "f1"} if with_filter else {
                 "filter": cart_query_str_studylvl}
-            in_filter_and_cart_domain_studylvl = {"filter": cart_query_str_studylvl}
+            in_filter_and_cart_domain_studylvl = {"filter": '(+'+cart_query_str_studylvl+')'}
 
             custom_facets["series_in_filter_and_cart"] = copy.deepcopy(cart_facets["series_in_filter_and_cart"])
             custom_facets["series_in_filter_and_cart"]["field"] = id
@@ -1819,7 +1831,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
     return [num_found, table_arr]
 
 
-def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries,results_lvl='StudyInstanceUID', with_records=True):
+def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries,results_lvl='StudyInstanceUID', with_records=True, debug=False):
     aggregate_level = "StudyInstanceUID"
     versions=ImagingDataCommonsVersion.objects.filter(
         active=True
@@ -1857,7 +1869,7 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
             solr_query = build_solr_query(
               copy.deepcopy(filtergrp),
               with_tags_for_ex=False,
-              search_child_records_by=None
+              search_child_records_by=None, solr_default_op='AND'
             )
             query_set_for_filt = create_query_set(solr_query, aux_sources, image_source, all_ui_attrs, image_source, DataSetType)
             query_set_for_filt=['(' + filt +')' if not filt[0] == '(' else filt for filt in query_set_for_filt]
@@ -1880,11 +1892,12 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
 
     serieslvl_found = False
     studyidsinseries = {}
+    query_str_series_lvl = ''
     if (len(partitions_series_lvl) > 0):
         query_str_series_lvl = create_cart_query_string([''], partitions_series_lvl, False)
         if (len(query_str_series_lvl) > 0):
             solr_result_series_lvl = query_solr(
-                collection=image_source_series.name, fields=field_list, query_string=query_str_series_lvl, fqs=None,
+                collection=image_source_series.name, fields=field_list, query_string=None , fqs=[query_str_series_lvl],
                 limit=int(mxseries), facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
                 uniques=None, with_cursor=None, stats=None, totals=totals, op='AND'
             )
@@ -1909,7 +1922,7 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
     query_str = create_cart_query_string(query_list, partitions_study_lvl, False)
     if len(query_str) > 0:
         solr_result = query_solr(
-            collection=image_source.name, fields=field_list, query_string=query_str, fqs=None, facets=custom_facets,
+            collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str], facets=custom_facets,
             sort=sortStr, counts_only=False, collapse_on=None, uniques=None, with_cursor=None, stats=None,
             totals=['SeriesInstanceUID'], op='AND', limit=int(limit), offset=int(offset)
         )
@@ -1976,7 +1989,9 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
             if ('crdcval' in row):
                 row['crdc_series_uuid'] = row['crdcval']
 
-
+    if debug:
+        solr_result['response']['query_string'] = query_str
+        solr_result['response']['query_string_series_lvl'] = query_str_series_lvl
     return solr_result['response']
 
 
@@ -2025,7 +2040,7 @@ def get_cart_data(filtergrp_list, partitions, field_list, limit, offset):
 
     solr_result = query_solr(collection=image_source.name, fields=field_list, query_string=query_str, fqs=None,
                 facets=None,sort=None, counts_only=False,collapse_on='SeriesInstanceUID', offset=offset, limit=limit, uniques=None,
-                with_cursor=None, stats=None, totals=None, op='AND')
+                with_cursor=None, stats=None, totals=None, op='OR')
 
     return solr_result['response']
 
@@ -2044,31 +2059,31 @@ def filtergrp_to_sql(filtergrp_lst):
           reformatted_fields=reformatted_fields
         )
         # final cart sql may involve several filters. Need to avoid collisions in parameter sets
-        for param_list in filtersql['params']:
-            for param in param_list:
-                param_name=param['name']
-                if param_name in used_params:
-                    param_try=param_name
-                    safe_name_found = False
-                    mtch = re.search(r'_\d+$', param_name)
-                    if mtch == None:
+        for param in filtersql['params']:
+            #for param in param_list:
+            param_name=param['name']
+            if param_name in used_params:
+                param_try=param_name
+                safe_name_found = False
+                mtch = re.search(r'_\d+$', param_name)
+                if mtch == None:
+                    break
+                numtry = int(param_name[mtch.regs[0][0]+1:])
+                while not safe_name_found:
+                    param_try = param_name[:mtch.regs[0][0]+1] + str(numtry)
+                    if not param_try in used_params:
+                        param['name']= param_try
+                        used_params[param_try]=1
+                        safe_name_found = True
                         break
-                    numtry = int(param_name[mtch.regs[0][0]+1:])
-                    while not safe_name_found:
-                        param_try = param_name[:mtch.regs[0][0]+1] + str(numtry)
-                        if not param_try in used_params:
-                            param['name']= param_try
-                            used_params[param_try]=1
-                            safe_name_found = True
-                            break
-                        numtry = numtry + 1
-                    if ('intersect_clause' in filtersql):
-                        filtersql['intersect_clause'] = filtersql['intersect_clause'].replace(param_name, param_try)
-                    if ('query_filters' in filtersql):
-                        for filtindex in range(len(filtersql['query_filters'])):
-                            filtersql['query_filters'][filtindex] = filtersql['query_filters'][filtindex].replace(param_name, param_try)
-                else:
-                    used_params[param_name]=1
+                    numtry = numtry + 1
+                if ('intersect_clause' in filtersql):
+                    filtersql['intersect_clause'] = filtersql['intersect_clause'].replace(param_name, param_try)
+                if ('query_filters' in filtersql):
+                    for filtindex in range(len(filtersql['query_filters'])):
+                        filtersql['query_filters'][filtindex] = filtersql['query_filters'][filtindex].replace(param_name, param_try)
+            else:
+                used_params[param_name]=1
         filtersA.append(filtersql)
     return filtersA
 
@@ -2924,12 +2939,13 @@ def get_bq_metadata(filters, fields, data_version, sources_and_attrs=None, group
             fields.extend(['"{}" AS {}'.format(static_fields[x],x) for x in static_fields])
         if reformatted_fields:
             fields = reformatted_fields
+
         for_union.append(query_base.format(
             field_clause= ",".join(fields),
             table_clause="`{}` {}".format(table_info[image_table]['name'], table_info[image_table]['alias']),
             join_clause=""" """.join(joins),
-            where_clause=(" AND ({})".format((" AND ".join(query_filters) if len(query_filters) else "") if len(filters) else "")) if len(filters) else "",
-            intersect_clause="{}".format("" if not len(intersect_statements) else "{}{}".format(
+            where_clause=(" AND ({})".format(" AND ".join(query_filters))) if len(query_filters) else "",
+            intersect_clause="AND {}".format("" if not len(intersect_statements) else "{}{}".format(
                 " AND " if len(non_related_filters) and len(query_filters) else "", "{} IN ({})".format(
                     child_record_search_field, intersect_clause
             ))),

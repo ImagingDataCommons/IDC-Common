@@ -394,7 +394,7 @@ def build_solr_facets(attrs, filter_tags=None, include_nulls=True, unique=None, 
 # still want those records when filtering on this attribute.
 #
 def build_solr_query(filters, comb_with='AND', with_tags_for_ex=False, subq_join_field=None,
-                     search_child_records_by=None, global_value_op='OR'):
+                     search_child_records_by=None, global_value_op='OR', solr_default_op='OR'):
 
     # subq_join not currently used in IDC
     ranged_attrs = Attribute.get_ranged_attrs()
@@ -504,7 +504,10 @@ def build_solr_query(filters, comb_with='AND', with_tags_for_ex=False, subq_join
 
         # If it's looking for a single None value
         if len(values) == 1 and values[0] == 'None':
-            query_str += '(-%s:{* TO *})' % attr_name
+            if (solr_default_op == "OR"):
+                query_str += '(-%s:{* TO *})' % attr_name
+            else:
+                query_str += '(*:* NOT %s:{* TO *})' % attr_name
         # If it's a ranged value, calculate the bins
         elif attr_name == 'bmi':
             with_none = False
@@ -546,14 +549,19 @@ def build_solr_query(filters, comb_with='AND', with_tags_for_ex=False, subq_join
                     clause = rngTemp.format(attr_name, values[0], values[1])
                 else:
                     clause = "{}:{}".format(attr_name, values[0])
-
-            query_str += (('(-(-(%s) +(%s:{* TO *})))' % (clause, attr_name)) if with_none else "(+({}))".format(clause))
+            if (solr_default_op=="OR"):
+                query_str += (('(-(-(%s) +(%s:{* TO *})))' % (clause, attr_name)) if with_none else "(+({}))".format(clause))
+            else:
+                query_str += (('(%s OR (*:* NOT %s:{* TO *}))' % (clause, attr_name)) if with_none else "(+({}))".format(clause))
 
         else:
             vals = "\" {} \"".format(value_op).join(values)
             if 'None' in values:
                 values.remove('None')
-                query_str += '(-(-(%s:("%s")) +(%s:{* TO *})))' % (attr_name,vals, attr_name)
+                if (solr_default_op=="OR"):
+                    query_str += '(-(-(%s:("%s")) +(%s:{* TO *})))' % (attr_name,vals, attr_name)
+                else:
+                    query_str += '((%s:("%s")) OR (*:* NOT %s:{* TO *}))' % (attr_name, vals, attr_name)
             else:
                 query_str += '(+%s:("%s"))' % (attr_name, vals)
 
