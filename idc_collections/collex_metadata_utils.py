@@ -566,10 +566,10 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
     return None
 
 
-def filter_manifest(filters, sources, versions, fields, limit, offset=0, level="SeriesInstanceUID", with_size=False):
+def filter_manifest(filters, sources, versions, fields, limit, offset=0, level="SeriesInstanceUID", with_size=False, series_only=False):
     try:
         custom_facets = None
-        search_by = {x: "StudyInstanceUID" for x in filters} if level == "SeriesInstanceUID" else None
+        search_by = {x: "StudyInstanceUID" for x in filters} if (level == "SeriesInstanceUID" and not series_only) else None
 
         if with_size:
             # build facet for instance_size aggregation
@@ -716,7 +716,8 @@ def create_file_manifest(request, cohort=None):
         loc = req.get('loc_type_{}'.format(file_type), 'aws')
         storage_bucket = '%s_bucket' % loc
         instructions = ""
-        from_cart = (req.get('from_cart', "False").lower() == "true")
+        from_cart = bool(req.get('from_cart', "False").lower() == "true")
+        single_series = bool(req.get("single_series", "False").lower() == "true")
 
         # Fields we need to fetch
         field_list = ["PatientID", "collection_id", "source_DOI", "StudyInstanceUID", "SeriesInstanceUID", "crdc_instance_uuid",
@@ -803,7 +804,7 @@ def create_file_manifest(request, cohort=None):
         if from_cart:
             items = get_cart_manifest(filtergrp_list, partitions, mxstudies, mxseries, field_list, MAX_FILE_LIST_ENTRIES)
         else:
-            items = filter_manifest(filters, sources, versions, field_list, MAX_FILE_LIST_ENTRIES, with_size=True)
+            items = filter_manifest(filters, sources, versions, field_list, MAX_FILE_LIST_ENTRIES, with_size=True, series_only=single_series)
         if 'docs' in items:
             manifest = items['docs']
         if not manifest or len(manifest) <= 0:
@@ -1901,6 +1902,8 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
                 limit=int(mxseries), facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
                 uniques=None, with_cursor=None, stats=None, totals=totals, op='AND'
             )
+            print("series result:")
+            print(solr_result_series_lvl)
             if with_records and ('response' in solr_result_series_lvl) and ('docs' in solr_result_series_lvl['response']):
                 serieslvl_found = True
                 for row in solr_result_series_lvl['response']['docs']:
@@ -1926,6 +1929,8 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
             sort=sortStr, counts_only=False, collapse_on=None, uniques=None, with_cursor=None, stats=None,
             totals=['SeriesInstanceUID'], op='AND', limit=int(limit), offset=int(offset)
         )
+        print("study result:")
+        print(solr_result)
         solr_result['response']['total'] = solr_result['facets']['total_SeriesInstanceUID']
         solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
     else:
