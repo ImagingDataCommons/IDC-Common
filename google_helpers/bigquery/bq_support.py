@@ -827,21 +827,22 @@ class BigQuerySupport(BigQueryABC):
                     query_param = query_params
                 else:
                     if operator == 'AND' and len(values) > 1:
-                        # If an operator is to be AND'd with more than one value we must make an intersection statement on the higher-level entity
-                        # (i.e. select for studies which have series containing both values)
-                        # That cannot be performed here
+                        # If an operator is to be AND'd with more than one value we must make an intersection statement
+                        # on the higher-level entity (i.e. select for studies which have series containing both values)
+                        # That cannot be performed here, as this is only a clause builder
                         logger.warning("[WARNING] Multiple-value AND clauses require an intersection statement!")
-                    # Simple array param
-                    query_param['parameterType']['type'] = "ARRAY"
-                    query_param['parameterType']['arrayType'] = {
-                        'type': parameter_type
-                    }
-                    query_param['parameterValue'] = {
-                        'arrayValues': [{'value': x.lower() if parameter_type == 'STRING' else x} for x in values]}
+                    else:
+                        # Simple array param
+                        query_param['parameterType']['type'] = "ARRAY"
+                        query_param['parameterType']['arrayType'] = {
+                            'type': parameter_type
+                        }
+                        query_param['parameterValue'] = {
+                            'arrayValues': [{'value': x.lower() if parameter_type == 'STRING' else x} for x in values]}
 
-                    clause_base = "%s IN UNNEST(@{})" % ("LOWER({}{})" if parameter_type == "STRING" else "{}{}")
-                    filter_string += clause_base.format('' if not field_prefix else field_prefix, attr,
-                                                                         param_name)
+                        clause_base = "%s IN UNNEST(@{})" % ("LOWER({}{})" if parameter_type == "STRING" else "{}{}")
+                        filter_string += clause_base.format('' if not field_prefix else field_prefix, attr,
+                                                                             param_name)
 
             if with_count_toggle:
                 filter_string = "({}) OR @{}_filtering = 'not_filtering'".format(filter_string, param_name)
