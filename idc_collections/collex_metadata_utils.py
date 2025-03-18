@@ -1831,7 +1831,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
     return [num_found, table_arr]
 
 
-def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries,results_lvl='StudyInstanceUID', with_records=True, debug=False):
+def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries, results_lvl='StudyInstanceUID', with_records=True, debug=False):
     aggregate_level = "StudyInstanceUID"
     versions=ImagingDataCommonsVersion.objects.filter(
         active=True
@@ -1992,6 +1992,7 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
     if debug:
         solr_result['response']['query_string'] = query_str
         solr_result['response']['query_string_series_lvl'] = query_str_series_lvl
+    print(solr_result['response'])
     return solr_result['response']
 
 
@@ -2206,7 +2207,6 @@ def get_cart_manifest(filtergrp_list, partitions, mxstudies, mxseries, field_lis
     if 'total_SeriesInstanceUID' in solr_result:
         manifest['total'] = solr_result['total_SeriesInstanceUID']
     elif 'total' in solr_result:
-
         manifest['total'] = solr_result['total']
 
     if ('total_instance_size' in  solr_result):
@@ -2818,13 +2818,11 @@ def get_bq_metadata(filters, fields, data_version, sources_and_attrs=None, group
         tables_in_query = []
         joins = []
         query_filters = []
-        non_related_filters = {}
         fields = [field_clauses[image_table]] if image_table in field_clauses else []
         if search_child_records_by:
             child_record_search_field = search_child_records_by
         if image_table in filter_attr_by_bq['sources']:
             filter_set = {x: filters[x] for x in filters if x in filter_attr_by_bq['sources'][image_table]['list']}
-            non_related_filters = filter_set
             if len(filter_set):
                 if may_need_intersect and len(filter_set.keys()) > 1:
                     for filter in filter_set:
