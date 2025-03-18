@@ -587,6 +587,7 @@ class BigQuerySupport(BigQueryABC):
     # Support for specifying a set of continuous numeric attributes to be presumed for BETWEEN clauses
     #
     # TODO: add support for DATETIME eg 6/10/2010
+    @staticmethod
     def build_bq_filter_and_params(filters, comb_with='AND', param_suffix=None, with_count_toggle=False,
                                    field_prefix=None, type_schema=None, case_insens=True, continuous_numerics=None):
         if field_prefix and field_prefix[-1] != ".":
@@ -675,8 +676,13 @@ class BigQuerySupport(BigQueryABC):
             is_btw = re.search('_e?btwe?', attr.lower()) is not None
             attr_name = attr[:attr.rfind('_')] if re.search('_[gl]te?|_e?btwe?|_eq', attr) else attr
             if attr_name not in attr_filters:
+                operator = 'OR'
+                if 'values' in values:
+                    # This is a fully qualified attribute which needs to have its definition broken out
+                    operator = values['op']
+                    values = values['values']
                 attr_filters[attr_name] = {
-                    'OP': 'OR',
+                    'OP': operator,
                     'filters': []
                 }
             attr_filter_set = attr_filters[attr_name]['filters']
@@ -820,6 +826,11 @@ class BigQuerySupport(BigQueryABC):
                     filter_string += " OR ".join(btw_filter_strings)
                     query_param = query_params
                 else:
+                    if operator == 'AND' and len(values) > 1:
+                        # If an operator is to be AND'd with more than one value we must make an intersection statement on the higher-level entity
+                        # (i.e. select for studies which have series containing both values)
+                        # That cannot be performed here
+                        logger.warning("[WARNING] Multiple-value AND clauses require an intersection statement!")
                     # Simple array param
                     query_param['parameterType']['type'] = "ARRAY"
                     query_param['parameterType']['arrayType'] = {

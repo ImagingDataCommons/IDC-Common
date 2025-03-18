@@ -2818,13 +2818,11 @@ def get_bq_metadata(filters, fields, data_version, sources_and_attrs=None, group
         tables_in_query = []
         joins = []
         query_filters = []
-        non_related_filters = {}
         fields = [field_clauses[image_table]] if image_table in field_clauses else []
         if search_child_records_by:
             child_record_search_field = search_child_records_by
         if image_table in filter_attr_by_bq['sources']:
             filter_set = {x: filters[x] for x in filters if x in filter_attr_by_bq['sources'][image_table]['list']}
-            non_related_filters = filter_set
             if len(filter_set):
                 if may_need_intersect and len(filter_set.keys()) > 1:
                     for filter in filter_set:
