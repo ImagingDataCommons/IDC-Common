@@ -2062,7 +2062,7 @@ def filtergrp_to_sql(filtergrp_lst):
         filtersql = get_bq_metadata(
             filters, ["crdc_series_uuid", storage_loc], data_version, None, ["crdc_series_uuid", storage_loc],
             no_submit=True, search_child_records_by="StudyInstanceUID",
-          reformatted_fields=reformatted_fields
+            reformatted_fields=reformatted_fields
         )
         # final cart sql may involve several filters. Need to avoid collisions in parameter sets
         for param in filtersql['params']:
