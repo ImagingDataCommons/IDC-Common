@@ -802,7 +802,7 @@ def create_file_manifest(request, cohort=None):
 
         # All downloads from this segment onwards are sync
         if from_cart:
-            items = get_cart_manifest(filtergrp_list, partitions, mxstudies, mxseries, field_list, MAX_FILE_LIST_ENTRIES)
+            items = cart_manifest(filtergrp_list, partitions, mxstudies, field_list, MAX_FILE_LIST_ENTRIES)
         else:
             items = filter_manifest(filters, sources, versions, field_list, MAX_FILE_LIST_ENTRIES, with_size=True, series_only=single_series)
         if 'docs' in items:
@@ -881,7 +881,7 @@ def create_file_manifest(request, cohort=None):
 
             for row in manifest:
                 if file_type in ['s5cmd', 'idc_index']:
-                    this_row = S5CMD_BASE.format(row[storage_bucket], row['crdc_series_uuid'], os.linesep)
+                    this_row = S5CMD_BASE.format(row[storage_bucket][0], row['crdc_series_uuid'], os.linesep) if isinstance(row[storage_bucket],list) else S5CMD_BASE.format(row[storage_bucket], row['crdc_series_uuid'], os.linesep)
                     content_type = "text/plain"
                 else:
                     content_type = "text/csv"
@@ -1872,10 +1872,6 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
 
     field_list = ['collection_id', 'PatientID', 'StudyInstanceUID', 'SeriesInstanceUID', 'Modality', 'instance_size',
                   'crdc_series_uuid', 'aws_bucket', 'gcs_bucket'] if with_records else None
-    # Do not pull the bucket from the study, as this will be an aggregated value over the Series and might differ
-    # for each series
-    field_list_study = ['collection_id', 'PatientID', 'StudyInstanceUID', 'SeriesInstanceUID', 'Modality', 'instance_size',
-                  'crdc_series_uuid'] if with_records else None
     sortStr = "collection_id asc, PatientID asc, StudyInstanceUID asc" if with_records else None
     totals = ['SeriesInstanceUID', 'StudyInstanceUID', 'PatientID', 'collection_id']
     custom_facets = {
@@ -1900,6 +1896,7 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
                 limit=int(mxseries), facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
                 uniques=None, with_cursor=None, stats=None, totals=totals, op='AND'
             )
+
             if with_records and ('response' in solr_result_series_lvl) and ('docs' in solr_result_series_lvl['response']):
                 serieslvl_found = True
                 for row in solr_result_series_lvl['response']['docs']:
@@ -1921,10 +1918,11 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
     query_str = create_cart_query_string(query_list, partitions_study_lvl, False)
     if len(query_str) > 0:
         solr_result = query_solr(
-            collection=image_source.name, fields=field_list_study, query_string=None, fqs=[query_str], facets=custom_facets,
+            collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str], facets=custom_facets,
             sort=sortStr, counts_only=False, collapse_on=None, uniques=None, with_cursor=None, stats=None,
             totals=['SeriesInstanceUID'], op='AND', limit=int(limit), offset=int(offset)
         )
+
         solr_result['response']['total'] = solr_result['facets']['total_SeriesInstanceUID']
         solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
     else:
@@ -2000,11 +1998,10 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
     if debug:
         solr_result['response']['query_string'] = query_str
         solr_result['response']['query_string_series_lvl'] = query_str_series_lvl
-
     return solr_result['response']
 
 
-def get_cart_data(filtergrp_list, partitions, field_list, limit, offset):
+def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offset):
     aggregate_level = "SeriesInstanceUID"
 
     versions=ImagingDataCommonsVersion.objects.filter(
@@ -2031,6 +2028,10 @@ def get_cart_data(filtergrp_list, partitions, field_list, limit, offset):
         aux_sources, {'for_ui': True, 'for_faceting': False, 'active_only': True},
         cache_as="all_ui_attr" if not sources.contains_inactive_versions() else None)
 
+    custom_facets = {
+        'instance_size': 'sum(instance_size)'
+    }
+
     query_list=[]
     for filtergrp in filtergrp_list:
         query_set_for_filt = []
@@ -2047,10 +2048,12 @@ def get_cart_data(filtergrp_list, partitions, field_list, limit, offset):
 
     query_str = create_cart_query_string(query_list, partitions, False)
 
-    solr_result = query_solr(collection=image_source.name, fields=field_list, query_string=query_str, fqs=None,
-                facets=None,sort=None, counts_only=False,collapse_on='SeriesInstanceUID', offset=offset, limit=limit, uniques=None,
-                with_cursor=None, stats=None, totals=None, op='OR')
+    solr_result = query_solr(collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str],
+                facets=custom_facets,sort=None, counts_only=False,collapse_on='SeriesInstanceUID', offset=offset, limit=limit, uniques=None,
+                with_cursor=None, stats=None, totals=['SeriesInstanceUID'], op='AND')
 
+    solr_result['response']['total'] = solr_result['facets']['total_SeriesInstanceUID']
+    solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
     return solr_result['response']
 
 
@@ -2207,10 +2210,12 @@ def create_cart_sql(partitions, filtergrp_lst, storage_loc, lvl="series"):
     return {'sql_string': cart_sql, 'params':params}
 
 
-def get_cart_manifest(filtergrp_list, partitions, mxstudies, mxseries, field_list, MAX_FILE_LIST_ENTRIES):
+def cart_manifest(filtergrp_list, partitions, mxstudies, field_list, MAX_FILE_LIST_ENTRIES):
     manifest ={}
     manifest['docs'] =[]
-    solr_result = get_cart_data_studylvl(filtergrp_list, partitions, MAX_FILE_LIST_ENTRIES, 0, mxstudies, MAX_FILE_LIST_ENTRIES, results_lvl = 'SeriesInstanceUID')
+
+    solr_result = get_cart_data_serieslvl(filtergrp_list, partitions, field_list, MAX_FILE_LIST_ENTRIES,0)
+    manifest['docs'] = solr_result['docs']
 
     if 'total_SeriesInstanceUID' in solr_result:
         manifest['total'] = solr_result['total_SeriesInstanceUID']
@@ -2220,18 +2225,7 @@ def get_cart_manifest(filtergrp_list, partitions, mxstudies, mxseries, field_lis
     if ('total_instance_size' in  solr_result):
         manifest['total_instance_size'] = solr_result['total_instance_size']
 
-    for row in solr_result['docs']:
-        crdc_series_arr = row['crdc_series_uuid']
-        for id in crdc_series_arr:
-            manifest_row = {
-                'crdc_series_uuid': id,
-                'aws_bucket': row['series_buckets'][id]['aws_bucket'],
-                'gcs_bucket': row['series_buckets'][id]['gcs_bucket']
-            }
-            for field in field_list:
-                if field not in ['crdc_series_uuid', 'aws_bucket', 'gcs_bucket']:
-                    manifest_row[field] = row[field]
-            manifest['docs'].append(manifest_row)
+
     return manifest
 
 
