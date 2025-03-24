@@ -141,7 +141,7 @@ def get_cohort_stats(request, cohort_id, as_json=True):
         'filters_found': True
     }
     try:
-        req = request.GET if request.GET else request.POST
+        req = request.GET if request.method == 'GET' else request.POST
         update = bool(req.get('update', "False").lower() == "true")
         old_cohort = Cohort.objects.get(id=cohort_id, active=True)
         old_cohort.perm = old_cohort.get_perm(request)
@@ -248,7 +248,7 @@ def cohort_detail(request, cohort_id):
     if debug: logger.debug('Called {}'.format(sys._getframe().f_code.co_name))
 
     try:
-        req = request.GET if request.GET else request.POST
+        req = request.GET if request.method == 'GET' else request.POST
         is_dicofdic = (req.get('is_dicofdic', "False").lower() == "true")
         source = req.get('data_source_type', DataSource.SOLR)
         fields = json.loads(req.get('fields', '[]'))
@@ -491,7 +491,7 @@ def cohort_uuids(request, cohort_id=0):
 def create_manifest_bq_table(request, cohorts):
     response = None
     tables = None
-    req = request.GET or request.POST
+    req = request.GET if request.method == 'GET' else request.POST
     try:
         timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d_%H%M%S')
 
@@ -642,7 +642,7 @@ def create_manifest_bq_table(request, cohorts):
 def download_cohort_manifest(request, cohort_id=0):
     try:
         cohort_ids = []
-        req = request.GET or request.POST
+        req = request.GET if request.method == 'GET' else request.POST
         if cohort_id:
             cohort_ids = [cohort_id]
         else:
@@ -694,7 +694,7 @@ def get_query_str_response(request, cohort_id=0):
     }
     status = 200
 
-    req = request.GET or request.POST
+    req = request.GET if request.method == 'GET' else request.POST
 
     try:
         query = get_query_string(request, cohort_id)
@@ -723,7 +723,7 @@ def get_query_str_response(request, cohort_id=0):
 
 def get_query_string(request, cohort_id=0):
     try:
-        req = request.POST or request.GET
+        req = request.GET if request.method == 'GET' else request.POST
         filters = json.loads(req.get('filters', None) or '{}')
         version = req.get('version', None)
 

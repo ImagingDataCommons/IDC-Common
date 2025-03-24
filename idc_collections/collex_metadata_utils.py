@@ -703,11 +703,11 @@ def submit_manifest_job(
 # Creates a file manifest of the supplied Cohort object or filters and returns a StreamingFileResponse
 def create_file_manifest(request, cohort=None):
     response = None
-    req = request.GET or request.POST
+    req = request.GET if request.method == 'GET' else request.POST
     async_download = bool(req.get('async_download', 'true').lower() == 'true')
     try:
         filters = None
-        req = request.GET or request.POST
+        req = request.GET if request.method == 'GET' else request.POST
         manifest = None
         partitions = None
         filtergrp_list = None
@@ -1900,8 +1900,6 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
                 limit=int(mxseries), facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
                 uniques=None, with_cursor=None, stats=None, totals=totals, op='AND'
             )
-            print("series result:")
-            print(solr_result_series_lvl)
             if with_records and ('response' in solr_result_series_lvl) and ('docs' in solr_result_series_lvl['response']):
                 serieslvl_found = True
                 for row in solr_result_series_lvl['response']['docs']:
@@ -1927,8 +1925,6 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
             sort=sortStr, counts_only=False, collapse_on=None, uniques=None, with_cursor=None, stats=None,
             totals=['SeriesInstanceUID'], op='AND', limit=int(limit), offset=int(offset)
         )
-        print("study result:")
-        print(solr_result)
         solr_result['response']['total'] = solr_result['facets']['total_SeriesInstanceUID']
         solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
     else:
@@ -2004,7 +2000,7 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
     if debug:
         solr_result['response']['query_string'] = query_str
         solr_result['response']['query_string_series_lvl'] = query_str_series_lvl
-    print(solr_result['response'])
+
     return solr_result['response']
 
 
@@ -2215,8 +2211,6 @@ def get_cart_manifest(filtergrp_list, partitions, mxstudies, mxseries, field_lis
     manifest ={}
     manifest['docs'] =[]
     solr_result = get_cart_data_studylvl(filtergrp_list, partitions, MAX_FILE_LIST_ENTRIES, 0, mxstudies, MAX_FILE_LIST_ENTRIES, results_lvl = 'SeriesInstanceUID')
-
-    print(solr_result)
 
     if 'total_SeriesInstanceUID' in solr_result:
         manifest['total'] = solr_result['total_SeriesInstanceUID']
