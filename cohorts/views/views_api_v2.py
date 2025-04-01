@@ -44,7 +44,6 @@ BQ_SERVICE = None
 
 logger = logging.getLogger('main_logger')
 
-USER_DATA_ON = settings.USER_DATA_ON
 
 @csrf_exempt
 @api_auth
