@@ -302,7 +302,7 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                     )
 
         custom_facets = {
-            'patient_per_collec':{'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,'facet': {'unique_count': 'unique(PatientID)'}},
+            'patient_per_collec': {'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,'facet': {'unique_count': 'unique(PatientID)'}},
             'study_per_collec': {'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,
                                    'facet': {'unique_count': 'unique(StudyInstanceUID)'}},
             'series_per_collec2': {'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,
