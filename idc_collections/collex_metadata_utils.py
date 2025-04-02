@@ -235,7 +235,8 @@ def sortNum(x):
 
 # Build data exploration context/response
 def build_explorer_context(is_dicofdic, source, versions, filters, fields, order_docs, counts_only, with_related,
-                           with_derived, collapse_on, is_json, uniques=None, totals=None, with_stats=True, disk_size=True):
+                           with_derived, collapse_on, is_json, uniques=None, totals=None, with_stats=True,
+                           disk_size=False):
     attr_by_source = {}
     attr_sets = {}
     context = {}
@@ -284,7 +285,6 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
             if is_origin and not len(fields):
                 fields = source.get_attr(for_faceting=False).filter(default_ui_display=True).values_list('name',
                                                                                                          flat=True)
-
             for dataset in data_sets:
                 if dataset.data_type in source_data_types[source.id]:
                     set_type = dataset.get_set_name()
@@ -307,11 +307,11 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
             custom_facets['study_per_collec'] = {'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,'facet': {'unique_count': 'unique(StudyInstanceUID)'}}
             custom_facets['series_per_collec']={'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,'facet': {'unique_count': 'unique(SeriesInstanceUID)'}}
 
-        if disk_size:
+        if disk_size and len(filters.keys()) > 0:
             custom_facets['instance_size'] ='sum(instance_size)'
 
-        if (len(custom_facets.keys())==0):
-            custom_facets=None
+        if len(custom_facets.keys()) <= 0:
+            custom_facets = None
 
         start = time.time()
         source_metadata = get_collex_metadata(
