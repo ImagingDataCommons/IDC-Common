@@ -300,7 +300,6 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                     attr_by_source[set_type]['attributes'].update(
                         {attr.name: {'source': source.id, 'obj': attr, 'vals': None, 'id': attr.id} for attr in attrs}
                     )
-        custom_facets = None
 
         custom_facets = {
             'patient_per_collec':{'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,'facet': {'unique_count': 'unique(PatientID)'}},
