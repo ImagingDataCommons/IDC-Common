@@ -235,7 +235,7 @@ def sortNum(x):
 
 # Build data exploration context/response
 def build_explorer_context(is_dicofdic, source, versions, filters, fields, order_docs, counts_only, with_related,
-                           with_derived, collapse_on, is_json, uniques=None, totals=None, disk_size=False):
+                           with_derived, collapse_on, is_json, uniques=None, totals=None, with_stats=True, disk_size=True):
     attr_by_source = {}
     attr_sets = {}
     context = {}
@@ -300,22 +300,18 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                     attr_by_source[set_type]['attributes'].update(
                         {attr.name: {'source': source.id, 'obj': attr, 'vals': None, 'id': attr.id} for attr in attrs}
                     )
-        custom_facets = None
+        custom_facets = {}
 
-        disk_size=True
+        if with_stats:
+            custom_facets['patient_per_collec'] = {'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,'facet': {'unique_count': 'unique(PatientID)'}}
+            custom_facets['study_per_collec'] = {'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,'facet': {'unique_count': 'unique(StudyInstanceUID)'}}
+            custom_facets['series_per_collec']={'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,'facet': {'unique_count': 'unique(SeriesInstanceUID)'}}
+
         if disk_size:
-            custom_facets = {
-                'instance_size': 'sum(instance_size)',
-                'patient_per_collec':{'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,'facet': {'unique_count': 'unique(PatientID)'}},
-                'study_per_collec': {'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,
-                                       'facet': {'unique_count': 'unique(StudyInstanceUID)'}},
-                'series_per_collec2': {'type': 'terms', 'field': 'collection_id', 'limit': -1, 'missing': True,
-                                     'facet': {'unique_count': 'unique(SeriesInstanceUID)'}},
-                'size_per_collec2': {'type': 'terms', 'field': 'collection_id', 'limit': 3000, 'facet': {'instance_size': 'sum(instance_size)'}},
-                'size_per_pat': {'type': 'terms', 'field': 'PatientID', 'limit': 3000, 'facet': {'instance_size': 'sum(instance_size)'}}
+            custom_facets['instance_size'] ='sum(instance_size)'
 
-
-            }
+        if (len(custom_facets.keys())==0):
+            custom_facets=None
 
         start = time.time()
         source_metadata = get_collex_metadata(
@@ -341,7 +337,7 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                 for dataset in data_sets:
                     if dataset.data_type in source_data_types[int(source.split(":")[-1])]:
                         set_name = dataset.get_set_name()
-                        if (set_name=='origin_set') and disk_size:
+                        if (set_name=='origin_set') and with_stats:
                             context['stats']={}
 
                             if 'patient_per_collec' in facet_set:
@@ -352,15 +348,10 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                                 context['stats']['study_per_collec']=facet_set['study_per_collec']
                             else:
                                 context['stats']['study_per_collec'] = 0
-                            if 'series_per_collec2' in facet_set:
-                                context['stats']['series_per_collec'] = facet_set['series_per_collec2']
+                            if 'series_per_collec' in facet_set:
+                                context['stats']['series_per_collec'] = facet_set['series_per_collec']
                             else:
                                 context['stats']['series_per_collec'] = 0
-                            if 'size_per_collec2' in facet_set:
-                                context['stats']['size_per_collec'] = facet_set['size_per_collec2']
-                            else:
-                                context['stats']['size_per_collec'] = 0
-
 
 
                         if dataset.data_type in data_types and set_name in attr_sets:
