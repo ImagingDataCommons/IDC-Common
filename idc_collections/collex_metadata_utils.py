@@ -282,9 +282,9 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
         for source in sources:
             is_origin = DataSetType.IMAGE_DATA in source_data_types[source.id]
             # If a field list wasn't provided, work from a default set
-            if is_origin and not len(fields):
-                fields = source.get_attr(for_faceting=False).filter(default_ui_display=True).values_list('name',
-                                                                                                         flat=True)
+            if is_origin and not counts_only and not len(fields):
+                fields = ["SeriesInstanceUID", "StudyInstanceUID", "collection_id", "PatientID", "program_name"]
+                logger.info("[STATUS] No field list provided, using default field list of: {}".format(fields))
             for dataset in data_sets:
                 if dataset.data_type in source_data_types[source.id]:
                     set_type = dataset.get_set_name()
@@ -2381,6 +2381,10 @@ def get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record
 
         if DataSetType.IMAGE_DATA in source_data_types[source.id] and not counts_only:
             # Get the records
+            if not len(fields):
+                logger.warning("[WARNING] Requesting records without a field lists results in all fields being returned, which we almost never want!")
+                logger.warning("[WARNING] Always give a precise list of fields!")
+                fields = ["collection_id", "SeriesInstanceUID", "StudyInstanceUID", "PatientID", "program_name"]
             solr_result = query_solr_and_format_result({
                 'collection': source.name if not record_source else record_source.name,
                 'fields': list(fields),
