@@ -2350,6 +2350,10 @@ def get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record
             logger.info("[BENCHMARKING] Total time to examine source {} and query: {}".format(
                 source.name, str(stop-start))
             )
+            if stop-start > 2:
+                logger.warning("[WARNING] Possible metadata fetch slowdown for source {}, logging:".format(source.name))
+                logger.warning("[WARNING] Facets: {}".format(solr_facets))
+                logger.warning("[WARNING] Filter queries: {}".format(query_set))
 
             if DataSetType.IMAGE_DATA in source_data_types[source.id]:
                 if 'numFound' in solr_result:
