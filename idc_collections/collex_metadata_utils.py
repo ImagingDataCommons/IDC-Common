@@ -2377,6 +2377,9 @@ def get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record
 
         if DataSetType.IMAGE_DATA in source_data_types[source.id] and not counts_only:
             # Get the records
+            if not len(fields):
+                logger.warning("[WARNING] Requesting records without a field lists results in all fields being returned, which we almost never want!")
+                logger.warning("[WARNING] Always give a precise list of fields!")
             solr_result = query_solr_and_format_result({
                 'collection': source.name if not record_source else record_source.name,
                 'fields': list(fields),

@@ -266,6 +266,7 @@ def cohort_detail(request, cohort_id):
             messages.error(request, 'You do not have permission to view that cohort.')
             return redirect('cohort_list')
 
+        print("Cohort detail call, counts only is: {}".format(counts_only))
         shared_with_ids = Cohort_Perms.objects.filter(cohort=cohort, perm=Cohort_Perms.READER).values_list('user', flat=True)
         shared_with_users = User.objects.filter(id__in=shared_with_ids)
 
