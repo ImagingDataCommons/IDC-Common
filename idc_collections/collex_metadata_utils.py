@@ -1110,7 +1110,7 @@ def parse_partition_string(partition):
     return part_str
 
 
-def parse_partition_att_strings(query_sets, partition, join):
+def parse_partition_att_strings(query_sets, partition, join_with_child):
         attStrA = []
         filt2D = partition['filt']
         for i in range(0, len(filt2D)):
@@ -1133,7 +1133,7 @@ def parse_partition_att_strings(query_sets, partition, join):
                     else:
                         tmpA.append('NOT ('+filtStr+')')
             attStr = ' AND '.join(tmpA)
-            if join:
+            if join_with_child:
                 attStr =attStr.replace('"','\\"')
                 attStr = '_query_:"{!join to=StudyInstanceUID from=StudyInstanceUID}' + attStr + '"'
 
@@ -1141,11 +1141,11 @@ def parse_partition_att_strings(query_sets, partition, join):
         return attStrA
 
 
-def create_cart_query_string(query_list, partitions, join):
+def create_cart_query_string(query_list, partitions, join_with_child):
     solrA=[]
     for i in range(len(partitions)):
         cur_part = partitions[i]
-        cur_part_attr_strA = parse_partition_att_strings(query_list, cur_part, join)
+        cur_part_attr_strA = parse_partition_att_strings(query_list, cur_part, join_with_child)
         cur_part_str = parse_partition_string(cur_part)
         for j in range(len(cur_part_attr_strA)):
             if (len(cur_part_attr_strA[j])>0):
@@ -2024,6 +2024,7 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
     }
 
     query_list=[]
+
     for filtergrp in filtergrp_list:
         query_set_for_filt = []
         if (len(filtergrp)>0):
@@ -2037,7 +2038,7 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
 
         query_list.append(query_string_for_filt)
 
-    query_str = create_cart_query_string(query_list, partitions, False)
+    query_str = create_cart_query_string(query_list, partitions, True)
 
     solr_result = query_solr(collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str],
                 facets=custom_facets,sort=None, counts_only=False,collapse_on='SeriesInstanceUID', offset=offset, limit=limit, uniques=None,
