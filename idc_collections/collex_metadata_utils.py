@@ -1110,7 +1110,7 @@ def parse_partition_string(partition):
     return part_str
 
 
-def parse_partition_att_strings(query_sets, partition, join):
+def parse_partition_att_strings(query_sets, partition, join_with_child):
         attStrA = []
         filt2D = partition['filt']
         for i in range(0, len(filt2D)):
@@ -1133,7 +1133,7 @@ def parse_partition_att_strings(query_sets, partition, join):
                     else:
                         tmpA.append('NOT ('+filtStr+')')
             attStr = ' AND '.join(tmpA)
-            if join:
+            if join_with_child:
                 attStr =attStr.replace('"','\\"')
                 attStr = '_query_:"{!join to=StudyInstanceUID from=StudyInstanceUID}' + attStr + '"'
 
@@ -1141,11 +1141,11 @@ def parse_partition_att_strings(query_sets, partition, join):
         return attStrA
 
 
-def create_cart_query_string(query_list, partitions, join):
+def create_cart_query_string(query_list, partitions, join_with_child):
     solrA=[]
     for i in range(len(partitions)):
         cur_part = partitions[i]
-        cur_part_attr_strA = parse_partition_att_strings(query_list, cur_part, join)
+        cur_part_attr_strA = parse_partition_att_strings(query_list, cur_part, join_with_child)
         cur_part_str = parse_partition_string(cur_part)
         for j in range(len(cur_part_attr_strA)):
             if (len(cur_part_attr_strA[j])>0):
@@ -1244,7 +1244,13 @@ cart_facets = {
         }
 cart_facets_serieslvl = {"series_in_cart": {"type": "terms", "field": "collection_d", "limit":500,
                                                  "facet": { "unique_series_cart": "unique(SeriesInstanceUID)"},
-                                                }}
+
+                                                },
+                         "series_in_filter_and_cart": {"type": "terms", "field": "collection_id", "limit": 500,
+                                                       "facet": {
+                                                           "unique_series_filter_and_cart": "unique(SeriesInstanceUID)"},
+                                                       "domain": {"filter": ""}}
+                         }
 
 
 upstream_cart_facets = {
@@ -1391,7 +1397,7 @@ def generate_solr_cart_and_filter_strings(current_filters,filtergrp_list, partit
             cart_query_str_studylvl = None
 
         if (len(partitions_series_lvl) > 0):
-            cart_query_str_serieslvl = create_cart_query_string(query_list, partitions_series_lvl, False)
+            cart_query_str_serieslvl = create_cart_query_string(query_list, partitions_series_lvl, True)
         else:
             cart_query_str_serieslvl = None
 
@@ -1667,7 +1673,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         if tabletype in ["cases","series","studies"]:
             collstr= list(attrRowNumMp["collections"].keys())
             colrngfilt = '(+collection_id:('+ ' OR '.join(['"'+x+'"' for x in collstr ]) +'))'
-            colrngQ='('+colrngfilt+')('+cart_query_str_studylvl+')'
+            colrngQ='('+colrngfilt+')('+cart_query_str_all+')'
             custom_facets["upstream_collection_cart"]=copy.deepcopy(upstream_cart_facets["upstream_collection_cart"])
             custom_facets["upstream_collection_cart"]["domain"]["filter"]=colrngQ
 
@@ -1677,7 +1683,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         if tabletype in ["series","studies"]:
             casestr= list(attrRowNumMp["cases"].keys())
             caserngfilt = '(+PatientID:('+ ' OR '.join(['"'+x+'"' for x in casestr ]) +'))'
-            caserngQ = '(' + caserngfilt + ')(' + cart_query_str_studylvl + ')'
+            caserngQ = '(' + caserngfilt + ')(' + cart_query_str_all + ')'
             custom_facets["upstream_case_cart"] = copy.deepcopy(upstream_cart_facets["upstream_case_cart"])
             custom_facets["upstream_case_cart"]["domain"]["filter"] = caserngQ
             custom_facets["upstream_case_filter_cart"] = copy.deepcopy(upstream_cart_facets["upstream_case_filter_cart"])
@@ -1687,7 +1693,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         if tabletype in ["series"]:
             studystr= list(attrRowNumMp["studies"].keys())
             studyrngfilt = '(+StudyInstanceUID:('+ ' OR '.join(['"'+x+'"' for x in studystr ]) +'))'
-            studyrngQ = '(' + studyrngfilt + ')(' + cart_query_str_studylvl + ')'
+            studyrngQ = '(' + studyrngfilt + ')(' + cart_query_str_all + ')'
             custom_facets["upstream_study_cart"] = copy.deepcopy(upstream_cart_facets["upstream_study_cart"])
             custom_facets["upstream_study_cart"]["domain"]["filter"] = studyrngQ
             custom_facets["upstream_study_filter_cart"] = copy.deepcopy(upstream_cart_facets["upstream_study_filter_cart"])
@@ -1736,8 +1742,13 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
     if not (cart_query_str_serieslvl==None) and (len(cart_query_str_serieslvl)>0):
 
         custom_facets = cart_facets_serieslvl
-        custom_facets["series_in_cart"]["domain"]={"filter": cart_query_str_serieslvl}
-        custom_facets["series_in_cart"]["field"]=id
+        custom_facets["series_in_filter_and_cart"]["domain"]={"filter": cart_query_str_serieslvl}
+        custom_facets["series_in_filter_and_cart"]["field"]=id
+
+        in_cart_domain_serieslvl = {"filter": '(+' + cart_query_str_serieslvl + ')',"excludeTags": "f1"} if with_filter else {"filter": cart_query_str_serieslvl}
+        custom_facets["series_in_cart"]["field"] = id
+        custom_facets["series_in_cart"]["domain"] = in_cart_domain_serieslvl
+
 
         if tabletype in ["cases","studies","series"]:
             colrngQ = '(' + colrngfilt + ')(' + cart_query_str_serieslvl + ')'
@@ -1766,6 +1777,8 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
             custom_facets["upstream_study_filter"]["domain"]["filter"] = studyrngfilt+no_tble_item_filt_str
             custom_facets["upstream_study_filter_cart"] = copy.deepcopy(upstream_cart_facets["upstream_study_filter_cart"])
             custom_facets["upstream_study_filter_cart"]["domain"]["filter"] = studyrngQ+no_tble_item_filt_str
+
+
 
         solr_facet_result_serieslvl = query_solr(
             collection=image_source_series.name, fields=field_list, query_string=None, fqs=fqset[:],
@@ -2024,6 +2037,7 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
     }
 
     query_list=[]
+
     for filtergrp in filtergrp_list:
         query_set_for_filt = []
         if (len(filtergrp)>0):
@@ -2037,7 +2051,7 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
 
         query_list.append(query_string_for_filt)
 
-    query_str = create_cart_query_string(query_list, partitions, False)
+    query_str = create_cart_query_string(query_list, partitions, True)
 
     solr_result = query_solr(collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str],
                 facets=custom_facets,sort=None, counts_only=False,collapse_on='SeriesInstanceUID', offset=offset, limit=limit, uniques=None,
