@@ -1044,7 +1044,7 @@ def get_table_data(filters,fields,table_type,sources = None, versions = None, cu
     }
 
     results = get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record_limit,
-                                offset=0,custom_facets=custom_facets,raw_format=False)
+                                offset=0, custom_facets=custom_facets,raw_format=False)
 
     return results
 
