@@ -1047,8 +1047,8 @@ def get_table_data(filters,fields,table_type,sources = None, versions = None, cu
     return results
 
 
-# Based on a solr query array, set of sources, and UI attributes, produce a Solr-compattible queryset
-def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, DataSetType):
+# Based on a solr query array, set of sources, and UI attributes, produce a Solr-compatible queryset
+def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, DataSetType, default_join_field=None):
     query_set = []
     joined_origin = False
     source_data_types = fetch_data_source_types(sources)
@@ -1060,7 +1060,12 @@ def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, Da
             if attr_name in all_ui_attrs['list']:
                 # If the attribute is from this source, just add the query
                 if attr_name in all_ui_attrs['sources'][source.id]['list']:
-                    query_set.append(solr_query['queries'][attr])
+                    if default_join_field is None:
+                        query_set.append(solr_query['queries'][attr])
+                    else:
+                        attStr = solr_query['queries'][attr].replace('"', '\\"')
+                        attStr = '(_query_:"{!join to=' + default_join_field + ' from=' + default_join_field + '}' + attStr + '")'
+                        query_set.append(attStr)
                 # If it's in another source for this program, we need to join on that source
                 else:
                     for ds in sources:
@@ -1076,7 +1081,7 @@ def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, Da
                             )) + solr_query['queries'][attr]
                             if DataSetType.ANCILLARY_DATA in source_data_types[
                                 ds.id] and not DataSetType.ANCILLARY_DATA in source_data_types[source.id]:
-                                joined_query = 'has_related:"False" OR _query_:"%s"' % joined_query.replace("\"",
+                                joined_query = '(has_related:"False" OR _query_:"%s")' % joined_query.replace("\"",
                                                                                                             "\\\"")
                             query_set.append(joined_query)
             else:
@@ -2008,6 +2013,7 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
 def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offset):
     aggregate_level = "SeriesInstanceUID"
 
+
     versions=ImagingDataCommonsVersion.objects.filter(
         active=True
     ).get_data_versions(active=True)
@@ -2046,13 +2052,13 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
               with_tags_for_ex=False,
               search_child_records_by=None
             )
-            query_set_for_filt = create_query_set(solr_query, aux_sources, image_source, all_ui_attrs, image_source, DataSetType)
+            query_set_for_filt = create_query_set(solr_query, aux_sources, image_source, all_ui_attrs, image_source, DataSetType, default_join_field='StudyInstanceUID')
         query_string_for_filt = "".join(query_set_for_filt)
 
         query_list.append(query_string_for_filt)
 
-    query_str = create_cart_query_string(query_list, partitions, True)
-
+    query_str = create_cart_query_string(query_list, partitions, False)
+    #query_str = "{!join to=StudyInstanceUID from=StudyInstanceUID}(" + query_str + ")"
     solr_result = query_solr(collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str],
                 facets=custom_facets,sort=None, counts_only=False,collapse_on='SeriesInstanceUID', offset=offset, limit=limit, uniques=None,
                 with_cursor=None, stats=None, totals=['SeriesInstanceUID'], op='AND')
