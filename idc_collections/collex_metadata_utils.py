@@ -1047,7 +1047,7 @@ def get_table_data(filters,fields,table_type,sources = None, versions = None, cu
     return results
 
 
-# Based on a solr query array, set of sources, and UI attributes, produce a Solr-compattible queryset
+# Based on a solr query array, set of sources, and UI attributes, produce a Solr-compatible queryset
 def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, DataSetType, default_join_field=None):
     query_set = []
     joined_origin = False
