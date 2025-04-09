@@ -2485,7 +2485,7 @@ def get_metadata_bq(filters, fields, sources_and_attrs, counts_only, collapse_on
 # structure as the dict output by _build_attr_by_source.
 #
 # Queries are structured with the 'image' data type sources as the first table, and all 'ancillary' (i.e. non-image)
-# tables as JOINs into the first table. Faceted counts are done on a per attribute basis (though could be restructed
+# tables as JOINs into the first table. Faceted counts are done on a per attribute basis (though could be restructured
 # into a single call). Filters are handled by BigQuery API parameterization, and disabled for faceted bucket counts
 # based on their presence in a secondary WHERE clause field which resolves to 'true' if that filter's attribute is the
 # attribute currently being counted
