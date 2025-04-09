@@ -934,7 +934,9 @@ def create_file_manifest(request, cohort=None):
 # with_derived: include derived data types in filtering and faceted counting
 # collapse_on: the field used to specify unique counts
 # order_docs: array for ordering documents
-# sources (optional): List of data sources to query; all active sources will be used if not provided
+# sources (optional): List of data sources to query; all active sources will be used if not provided. This list MUST
+#   include all relevant sources for fields and attributes to be filtered, faceted, or returned. If any are missing
+#   those attributes will be dropped.
 # versions (optional): List of data versions to query; all active data versions will be used if not provided
 # facets: array of strings, attributes to faceted count as a list of attribute names; if not provided no faceted
 #   counts will be performed
@@ -1330,12 +1332,11 @@ def generate_solr_cart_and_filter_strings(current_filters,filtergrp_list, partit
     image_source = sources.filter(id__in=DataSetType.objects.get(
         data_type=DataSetType.IMAGE_DATA).datasource_set.all()).first()
 
-
     all_ui_attrs = fetch_data_source_attr(
         aux_sources, {'for_ui': True, 'for_faceting': False, 'active_only': True},
         cache_as="all_ui_attr" if not sources.contains_inactive_versions() else None)
 
-    if (current_filters is not None):
+    if current_filters is not None:
         current_solr_query = build_solr_query(
           copy.deepcopy(current_filters),
           with_tags_for_ex=False,
@@ -2241,10 +2242,38 @@ def cart_manifest(filtergrp_list, partitions, mxstudies, field_list, MAX_FILE_LI
 
 
 # Use solr to fetch faceted counts and/or records
+#
+# filters: dict, {<attribute name>: [<val1>, ...]}
+# fields: string of fields to include for record requests (ignored if counts_only=True)
+# counts_only: boolean to determine if records will be returned
+# record_limit: the number of records to return in a record request, note that if this is not provided the maximum (65k)
+#   is used. this should never be set to -1 as that will attempt to return all records matching the filters and that can
+#   overwhelm the system.
+# collapse_on: the field used to specify unique counts
+# offset: (optional) if requesting records, the offset from the first record to begin returning
+# sort: (optional) array for ordering documents
+# default_facets: (optional) boolean indicating that if no set of attr_facets was provided but this is NOT a records_only call, to
+#   use the default UI facet set (defined by an attribute having the default_ui_display value set to true
+# attr_facets: (optional) override the default UI facet set with a specific requested set of attributes
+# records_only: (optional) boolean indicating if this call should return faceted counts
+# sources (optional): List of data sources to query; all active sources will be used if not provided. This list MUST
+#   include all relevant sources for fields and attributes to be filtered, faceted, or returned. If any are missing
+#   those attributes will be dropped.
+# unqiues: (optional) list of attributes for which to compute unique counts, and the attribute to be counted
+# totals: (optional) list of attributes of which to compute totals
+# cursor: (optional) in the case of a large result set for a records retrieval, use a cursor to avoid deep paging slowdowns
+# custom_facets: (optional) a pre-defined dict of additional facets outside the typical attribute set (eg. sums or dismax)
+# record_source: (optional) Override the auto-detection of the record source (normally determined based on fields
+#   requested)
+# search_child_records_by: (optional) In the case of a hierarchical dataset, indicates sibling records should be included from a
+#   higher order parent, based on the provided attribute name (str)
+# filtered_needed: (optional) boolean indicating the faceted counts should also include a set of fully filtered counts
+# raw_format: (optional) boolean indicating the Solr result should not be parsed, merely returned as it is received from Solr
+#
 def get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record_limit, offset=0, attr_facets=None,
                       records_only=False, sort=None, uniques=None, record_source=None, totals=None, cursor=None,
-                      search_child_records_by=None, filtered_needed=True, custom_facets=None, sort_field=None,
-                      raw_format=False, default_facets=True, aux_sources=None):
+                      search_child_records_by=None, filtered_needed=True, custom_facets=None, raw_format=False,
+                      default_facets=True, aux_sources=None):
 
     filters = filters or {}
     results = {'docs': None, 'facets': {}}
@@ -2342,7 +2371,7 @@ def get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record
                 'facets': solr_facets,
                 'fqs': query_set,
                 'query_string': None,
-                'limit': record_limit,
+                'limit': 0,
                 'counts_only': True,
                 'fields': None,
                 'uniques': curUniques,
@@ -2358,8 +2387,8 @@ def get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record
                     'facets': solr_facets_filtered,
                     'fqs': query_set,
                     'query_string': None,
-                    'limit': record_limit,
-                    'sort': sort_field,
+                    'limit': 0,
+                    'sort': sort,
                     'counts_only': True,
                     'fields': None,
                     'stats': solr_stats_filtered,
