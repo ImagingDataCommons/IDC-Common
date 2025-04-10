@@ -934,7 +934,9 @@ def create_file_manifest(request, cohort=None):
 # with_derived: include derived data types in filtering and faceted counting
 # collapse_on: the field used to specify unique counts
 # order_docs: array for ordering documents
-# sources (optional): List of data sources to query; all active sources will be used if not provided
+# sources (optional): List of data sources to query; all active sources will be used if not provided. This list MUST
+#   include all relevant sources for fields and attributes to be filtered, faceted, or returned. If any are missing
+#   those attributes will be dropped.
 # versions (optional): List of data versions to query; all active data versions will be used if not provided
 # facets: array of strings, attributes to faceted count as a list of attribute names; if not provided no faceted
 #   counts will be performed
@@ -1042,13 +1044,13 @@ def get_table_data(filters,fields,table_type,sources = None, versions = None, cu
     }
 
     results = get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record_limit,
-                                offset=0,custom_facets=custom_facets,raw_format=False)
+                                offset=0, custom_facets=custom_facets,raw_format=False)
 
     return results
 
 
-# Based on a solr query array, set of sources, and UI attributes, produce a Solr-compattible queryset
-def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, DataSetType):
+# Based on a solr query array, set of sources, and UI attributes, produce a Solr-compatible queryset
+def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, DataSetType, default_join_field=None):
     query_set = []
     joined_origin = False
     source_data_types = fetch_data_source_types(sources)
@@ -1060,7 +1062,12 @@ def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, Da
             if attr_name in all_ui_attrs['list']:
                 # If the attribute is from this source, just add the query
                 if attr_name in all_ui_attrs['sources'][source.id]['list']:
-                    query_set.append(solr_query['queries'][attr])
+                    if default_join_field is None:
+                        query_set.append(solr_query['queries'][attr])
+                    else:
+                        attStr = solr_query['queries'][attr].replace('"', '\\"')
+                        attStr = '(_query_:"{!join to=' + default_join_field + ' from=' + default_join_field + '}' + attStr + '")'
+                        query_set.append(attStr)
                 # If it's in another source for this program, we need to join on that source
                 else:
                     for ds in sources:
@@ -1076,7 +1083,7 @@ def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, Da
                             )) + solr_query['queries'][attr]
                             if DataSetType.ANCILLARY_DATA in source_data_types[
                                 ds.id] and not DataSetType.ANCILLARY_DATA in source_data_types[source.id]:
-                                joined_query = 'has_related:"False" OR _query_:"%s"' % joined_query.replace("\"",
+                                joined_query = '(has_related:"False" OR _query_:"%s")' % joined_query.replace("\"",
                                                                                                             "\\\"")
                             query_set.append(joined_query)
             else:
@@ -1325,12 +1332,11 @@ def generate_solr_cart_and_filter_strings(current_filters,filtergrp_list, partit
     image_source = sources.filter(id__in=DataSetType.objects.get(
         data_type=DataSetType.IMAGE_DATA).datasource_set.all()).first()
 
-
     all_ui_attrs = fetch_data_source_attr(
         aux_sources, {'for_ui': True, 'for_faceting': False, 'active_only': True},
         cache_as="all_ui_attr" if not sources.contains_inactive_versions() else None)
 
-    if (current_filters is not None):
+    if current_filters is not None:
         current_solr_query = build_solr_query(
           copy.deepcopy(current_filters),
           with_tags_for_ex=False,
@@ -2008,6 +2014,7 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
 def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offset):
     aggregate_level = "SeriesInstanceUID"
 
+
     versions=ImagingDataCommonsVersion.objects.filter(
         active=True
     ).get_data_versions(active=True)
@@ -2046,13 +2053,13 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
               with_tags_for_ex=False,
               search_child_records_by=None
             )
-            query_set_for_filt = create_query_set(solr_query, aux_sources, image_source, all_ui_attrs, image_source, DataSetType)
+            query_set_for_filt = create_query_set(solr_query, aux_sources, image_source, all_ui_attrs, image_source, DataSetType, default_join_field='StudyInstanceUID')
         query_string_for_filt = "".join(query_set_for_filt)
 
         query_list.append(query_string_for_filt)
 
-    query_str = create_cart_query_string(query_list, partitions, True)
-
+    query_str = create_cart_query_string(query_list, partitions, False)
+    #query_str = "{!join to=StudyInstanceUID from=StudyInstanceUID}(" + query_str + ")"
     solr_result = query_solr(collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str],
                 facets=custom_facets,sort=None, counts_only=False,collapse_on='SeriesInstanceUID', offset=offset, limit=limit, uniques=None,
                 with_cursor=None, stats=None, totals=['SeriesInstanceUID'], op='AND')
@@ -2235,10 +2242,38 @@ def cart_manifest(filtergrp_list, partitions, mxstudies, field_list, MAX_FILE_LI
 
 
 # Use solr to fetch faceted counts and/or records
+#
+# filters: dict, {<attribute name>: [<val1>, ...]}
+# fields: string of fields to include for record requests (ignored if counts_only=True)
+# counts_only: boolean to determine if records will be returned
+# record_limit: the number of records to return in a record request, note that if this is not provided the maximum (65k)
+#   is used. this should never be set to -1 as that will attempt to return all records matching the filters and that can
+#   overwhelm the system.
+# collapse_on: the field used to specify unique counts
+# offset: (optional) if requesting records, the offset from the first record to begin returning
+# sort: (optional) array for ordering documents
+# default_facets: (optional) boolean indicating that if no set of attr_facets was provided but this is NOT a records_only call, to
+#   use the default UI facet set (defined by an attribute having the default_ui_display value set to true
+# attr_facets: (optional) override the default UI facet set with a specific requested set of attributes
+# records_only: (optional) boolean indicating if this call should return faceted counts
+# sources (optional): List of data sources to query; all active sources will be used if not provided. This list MUST
+#   include all relevant sources for fields and attributes to be filtered, faceted, or returned. If any are missing
+#   those attributes will be dropped.
+# unqiues: (optional) list of attributes for which to compute unique counts, and the attribute to be counted
+# totals: (optional) list of attributes of which to compute totals
+# cursor: (optional) in the case of a large result set for a records retrieval, use a cursor to avoid deep paging slowdowns
+# custom_facets: (optional) a pre-defined dict of additional facets outside the typical attribute set (eg. sums or dismax)
+# record_source: (optional) Override the auto-detection of the record source (normally determined based on fields
+#   requested)
+# search_child_records_by: (optional) In the case of a hierarchical dataset, indicates sibling records should be included from a
+#   higher order parent, based on the provided attribute name (str)
+# filtered_needed: (optional) boolean indicating the faceted counts should also include a set of fully filtered counts
+# raw_format: (optional) boolean indicating the Solr result should not be parsed, merely returned as it is received from Solr
+#
 def get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record_limit, offset=0, attr_facets=None,
                       records_only=False, sort=None, uniques=None, record_source=None, totals=None, cursor=None,
-                      search_child_records_by=None, filtered_needed=True, custom_facets=None, sort_field=None,
-                      raw_format=False, default_facets=True, aux_sources=None):
+                      search_child_records_by=None, filtered_needed=True, custom_facets=None, raw_format=False,
+                      default_facets=True, aux_sources=None):
 
     filters = filters or {}
     results = {'docs': None, 'facets': {}}
@@ -2336,7 +2371,7 @@ def get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record
                 'facets': solr_facets,
                 'fqs': query_set,
                 'query_string': None,
-                'limit': record_limit,
+                'limit': 0,
                 'counts_only': True,
                 'fields': None,
                 'uniques': curUniques,
@@ -2352,8 +2387,8 @@ def get_metadata_solr(filters, fields, sources, counts_only, collapse_on, record
                     'facets': solr_facets_filtered,
                     'fqs': query_set,
                     'query_string': None,
-                    'limit': record_limit,
-                    'sort': sort_field,
+                    'limit': 0,
+                    'sort': sort,
                     'counts_only': True,
                     'fields': None,
                     'stats': solr_stats_filtered,
@@ -2450,7 +2485,7 @@ def get_metadata_bq(filters, fields, sources_and_attrs, counts_only, collapse_on
 # structure as the dict output by _build_attr_by_source.
 #
 # Queries are structured with the 'image' data type sources as the first table, and all 'ancillary' (i.e. non-image)
-# tables as JOINs into the first table. Faceted counts are done on a per attribute basis (though could be restructed
+# tables as JOINs into the first table. Faceted counts are done on a per attribute basis (though could be restructured
 # into a single call). Filters are handled by BigQuery API parameterization, and disabled for faceted bucket counts
 # based on their presence in a secondary WHERE clause field which resolves to 'true' if that filter's attribute is the
 # attribute currently being counted
