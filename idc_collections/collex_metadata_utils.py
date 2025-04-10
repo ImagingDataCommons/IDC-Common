@@ -1163,6 +1163,7 @@ def create_cart_query_string(query_list, partitions, join_with_child):
     solrStr = ' OR '.join(solrA)
     return solrStr
 
+
 table_formats={}
 table_formats["collections"] = {"id":"collection_id","fields":["collection_id"],
                                 "facetfields":{"PatientID":"unique_cases", "StudyInstanceUID":"unique_studies", "SeriesInstanceUID":"unique_series"},
@@ -1306,7 +1307,6 @@ upstream_cart_facets = {
              "upstream_study_filter_cart": {"type": "terms", "field": "StudyInstanceUID", "limit": 500,
                             "facet": {"filter_cart_series_in_study": "unique(SeriesInstanceUID)"},
                             "domain": {"excludeTags": "f0,f1", "filter": ""}},
-
 }
 
 
@@ -1503,7 +1503,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         num_found = rng_query['response']['numFound']
         #rngids=rng_query["per_id"]
     else:
-
         sortStr = sortarg + " " + sortdir
         imgNm= image_source_series.name if (tabletype=="series") else image_source.name
 
@@ -1511,7 +1510,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
             fqs=[current_filt_str]
         else:
             fqs=None
-
 
         rng_query = query_solr(
             collection=imgNm, fields=[id], query_string=None, fqs=fqs,
@@ -1695,7 +1693,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
             custom_facets["upstream_case_filter_cart"] = copy.deepcopy(upstream_cart_facets["upstream_case_filter_cart"])
             custom_facets["upstream_case_filter_cart"]["domain"]["filter"] = caserngQ+no_tble_item_filt_str
 
-
         if tabletype in ["series"]:
             studystr= list(attrRowNumMp["studies"].keys())
             studyrngfilt = '(+StudyInstanceUID:('+ ' OR '.join(['"'+x+'"' for x in studystr ]) +'))'
@@ -1707,8 +1704,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
 
         in_cart_domain_all = {"filter": '(+'+cart_query_str_all+')', "excludeTags":"f1"} if with_filter else {"filter": '(+'+cart_query_str_all+')'}
         in_filter_and_cart_domain_all = {"filter": '(+'+cart_query_str_all+')'}
-
-
 
         custom_facets["items_in_filter_and_cart"] = copy.deepcopy(cart_facets["items_in_filter_and_cart"])
         custom_facets["items_in_filter_and_cart"]["field"] = id
@@ -1738,7 +1733,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
     facet_srcs = []
     solr_facet_result = query_solr(
         collection=image_source.name, fields=field_list, query_string=None, fqs=fqset[:],
-        facets=custom_facets, sort=sortStr, counts_only=True, collapse_on=None, offset=0, limit=limit,
+        facets=custom_facets, sort=sortStr, counts_only=True, collapse_on=None, offset=0, limit=0,
         uniques=None, with_cursor=None, stats=None, totals=None, op='AND'
     )
     if ('facets' in solr_facet_result):
@@ -1755,7 +1750,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         custom_facets["series_in_cart"]["field"] = id
         custom_facets["series_in_cart"]["domain"] = in_cart_domain_serieslvl
 
-
         if tabletype in ["cases","studies","series"]:
             colrngQ = '(' + colrngfilt + ')(' + cart_query_str_serieslvl + ')'
             custom_facets["upstream_collection_cart"] = copy.deepcopy(upstream_cart_facets["upstream_collection_cart"])
@@ -1764,7 +1758,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
             custom_facets["upstream_collection_filter"]["domain"]["filter"] = colrngfilt+no_tble_item_filt_str
             custom_facets["upstream_collection_filter_cart"] = copy.deepcopy(upstream_cart_facets["upstream_collection_filter_cart"])
             custom_facets["upstream_collection_filter_cart"]["domain"]["filter"] = colrngQ+no_tble_item_filt_str
-
 
         if tabletype in ["studies","series"]:
             caserngQ = '(' + caserngfilt + ')(' + cart_query_str_serieslvl + ')'
@@ -1784,11 +1777,9 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
             custom_facets["upstream_study_filter_cart"] = copy.deepcopy(upstream_cart_facets["upstream_study_filter_cart"])
             custom_facets["upstream_study_filter_cart"]["domain"]["filter"] = studyrngQ+no_tble_item_filt_str
 
-
-
         solr_facet_result_serieslvl = query_solr(
             collection=image_source_series.name, fields=field_list, query_string=None, fqs=fqset[:],
-            facets=custom_facets, sort=sortStr, counts_only=True, collapse_on=None, offset=0, limit=limit,
+            facets=custom_facets, sort=sortStr, counts_only=True, collapse_on=None, offset=0, limit=0,
             uniques=None, with_cursor=None, stats=None, totals=None, op='AND'
         )
 
