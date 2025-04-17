@@ -176,6 +176,7 @@ def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets
     query_result = {}
 
     try:
+        print(payload)
         start = time.time()
         query_response = requests.post(query_uri, data=json.dumps(payload), headers={'Content-type': 'application/json'}, auth=(SOLR_LOGIN, SOLR_PASSWORD), verify=SOLR_CERT)
         stop = time.time()
