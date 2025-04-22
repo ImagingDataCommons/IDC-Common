@@ -670,7 +670,7 @@ def submit_manifest_job(
         bq_query_and_params = create_cart_sql(cart_partition, filtergrp_list, storage_loc, lvl="series")
     else:
         bq_query_and_params = get_bq_metadata(
-            filters, ["crdc_series_uuid", storage_loc], data_version, fields, ["crdc_series_uuid", storage_loc],
+            filters, fields, data_version, None, fields,
             no_submit=True, search_child_records_by=child_records,
             reformatted_fields=reformatted_fields, cart_filters=cart_filters
         )
@@ -782,7 +782,7 @@ def create_file_manifest(request, cohort=None):
         if async_download and (file_type not in ["bq"]):
             jobId, file_name = submit_manifest_job(
                 ImagingDataCommonsVersion.objects.filter(active=True), filters, storage_bucket, file_type, instructions,
-                selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else None, from_cart=from_cart,
+                selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else field_list, from_cart=from_cart,
                 cart_partition=partitions, filtergrp_list=filtergrp_list,
                 filename=file_name
             )
