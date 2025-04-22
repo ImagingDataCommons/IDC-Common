@@ -670,7 +670,7 @@ def submit_manifest_job(
         bq_query_and_params = create_cart_sql(cart_partition, filtergrp_list, storage_loc, lvl="series")
     else:
         bq_query_and_params = get_bq_metadata(
-            filters, ["crdc_series_uuid", storage_loc], data_version, fields, ["crdc_series_uuid", storage_loc],
+            filters, fields, data_version, None, fields,
             no_submit=True, search_child_records_by=child_records,
             reformatted_fields=reformatted_fields, cart_filters=cart_filters
         )
@@ -782,7 +782,7 @@ def create_file_manifest(request, cohort=None):
         if async_download and (file_type not in ["bq"]):
             jobId, file_name = submit_manifest_job(
                 ImagingDataCommonsVersion.objects.filter(active=True), filters, storage_bucket, file_type, instructions,
-                selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else None, from_cart=from_cart,
+                selected_columns_sorted if file_type not in ["s5cmd", "idc_index"] else field_list, from_cart=from_cart,
                 cart_partition=partitions, filtergrp_list=filtergrp_list,
                 filename=file_name
             )
@@ -1163,16 +1163,17 @@ def create_cart_query_string(query_list, partitions, join_with_child):
     solrStr = ' OR '.join(solrA)
     return solrStr
 
+
 table_formats={}
 table_formats["collections"] = {"id":"collection_id","fields":["collection_id"],
                                 "facetfields":{"PatientID":"unique_cases", "StudyInstanceUID":"unique_studies", "SeriesInstanceUID":"unique_series"},
                                 "facets":{
-                                       "per_id": {"type": "terms", "field": "collection_id","limit":500,
+                                       "per_id": {"type": "terms", "field": "collection_id","limit": -1,
                                                   "facet": {"unique_cases": "unique(PatientID)", "unique_studies": "unique(StudyInstanceUID)",
                                                             "unique_series":"unique(SeriesInstanceUID)"}
                                                   }
                                        },
-                                   "facets_not_filt":{"per_id_nf": {"type": "terms", "field": "collection_id","limit":500,
+                                   "facets_not_filt":{"per_id_nf": {"type": "terms", "field": "collection_id","limit": -1,
                                                   "facet": {"nf_unique_cases": "unique(PatientID)","nf_unique_studies":"unique(StudyInstanceUID)",
                                                             "nf_unique_series":"unique(SeriesInstanceUID)"},
                                                    "domain":{"excludeTags":"f1"}}
@@ -1183,14 +1184,14 @@ table_formats["cases"]={"parentid":"collection_id","id":"PatientID","fields":["c
                             "facetfields":{"StudyInstanceUID":"unique_studies", "SeriesInstanceUID":"unique_series"},
 
                             "facets":{
-                                       "per_id": {"type": "terms", "field": "PatientID", "limit":500,
+                                       "per_id": {"type": "terms", "field": "PatientID", "limit": -1,
                                                   "facet": {"unique_studies": "unique(StudyInstanceUID)",
                                                             "unique_series":"unique(SeriesInstanceUID)"}
 
                                                   }
                                        },
                              "facets_not_filt":{
-                                       "per_id_nf": {"type": "terms", "field": "PatientID", "limit":500,
+                                       "per_id_nf": {"type": "terms", "field": "PatientID", "limit": -1,
                                                   "facet": {"nf_unique_studies": "unique(StudyInstanceUID)",
                                                             "nf_unique_series":"unique(SeriesInstanceUID)"},
                                                     "domain": {"excludeTags":"f1"}}
@@ -1201,12 +1202,12 @@ table_formats["studies"]={"parentid":"PatientID","id":"StudyInstanceUID","fields
                             "facetfields":{"SeriesInstanceUID":"unique_series"},
 
                             "facets":{
-                                       "per_id": {"type": "terms", "field": "StudyInstanceUID", "limit":500,
+                                       "per_id": {"type": "terms", "field": "StudyInstanceUID", "limit": -1,
                                                   "facet": {"unique_series":"unique(SeriesInstanceUID)" }
                                                   },
                                        },
                              "facets_not_filt":{
-                                       "per_id_nf": {"type": "terms", "field": "StudyInstanceUID", "limit":500,
+                                       "per_id_nf": {"type": "terms", "field": "StudyInstanceUID", "limit": -1,
                                                   "facet": {"nf_unique_series":"unique(SeriesInstanceUID)"}
                                                   }, "domain": {"excludeTags":"f1"}
                                        }
@@ -1217,12 +1218,12 @@ table_formats["series"]={"parentid":"StudyInstanceUID", "id":"SeriesInstanceUID"
                          "fields":["collection_id", "PatientID", "StudyInstanceUID", 'SeriesInstanceUID','SeriesNumber','SeriesDescription','Modality','BodyPartExamined', 'access'],
 
 "facets":{
-                                       "per_id": {"type": "terms", "field": "SeriesInstanceUID", "limit":500,
+                                       "per_id": {"type": "terms", "field": "SeriesInstanceUID", "limit": -1,
                                                   "facet": {"unique_series":"unique(SeriesInstanceUID)" }
                                                   },
                                        },
                              "facets_not_filt":{
-                                       "per_id_nf": {"type": "terms", "field": "SeriesInstanceUID", "limit":500,
+                                       "per_id_nf": {"type": "terms", "field": "SeriesInstanceUID", "limit": -1,
                                                   "facet": {"nf_unique_series":"unique(SeriesInstanceUID)"},
                                                    "domain": {"excludeTags":"f1"}}
                                        }
@@ -1233,27 +1234,27 @@ table_formats["series"]={"parentid":"StudyInstanceUID", "id":"SeriesInstanceUID"
 
 cart_facets = {
 
-             "items_in_filter_and_cart": {"type": "terms", "field": "collection_id", "limit":500,
+             "items_in_filter_and_cart": {"type": "terms", "field": "collection_id", "limit": -1,
                                           "facet": {"unique_cases_filter_and_cart":"unique(PatientID)",
                                                     "unique_studies_filter_and_cart":"unique(StudyInstanceUID)"}, "domain":{"filter":""}},
-              "items_in_cart": {"type": "terms", "field": "collection_id", "limit":500,
+              "items_in_cart": {"type": "terms", "field": "collection_id", "limit": -1,
                                                  "facet": {"unique_cases_cart":"unique(PatientID)", "unique_studies_cart":"unique(StudyInstanceUID)"},
                                                 "domain": {"excludeTags": "f1", "filter":""}},
 
-              "series_in_filter_and_cart": {"type": "terms", "field": "collection_id", "limit":500,
+              "series_in_filter_and_cart": {"type": "terms", "field": "collection_id", "limit": -1,
                                           "facet": {
                                                     "unique_series_filter_and_cart": "unique(SeriesInstanceUID)"}, "domain":{"filter":""}},
-              "series_in_cart": {"type": "terms", "field": "collection_id", "limit":500,
+              "series_in_cart": {"type": "terms", "field": "collection_id", "limit": -1,
                                                  "facet": { "unique_series_cart": "unique(SeriesInstanceUID)"},
                                                 "domain": {"excludeTags": "f1", "filter":""}}
 
 
         }
-cart_facets_serieslvl = {"series_in_cart": {"type": "terms", "field": "collection_d", "limit":500,
+cart_facets_serieslvl = {"series_in_cart": {"type": "terms", "field": "collection_d", "limit": -1,
                                                  "facet": { "unique_series_cart": "unique(SeriesInstanceUID)"},
 
                                                 },
-                         "series_in_filter_and_cart": {"type": "terms", "field": "collection_id", "limit": 500,
+                         "series_in_filter_and_cart": {"type": "terms", "field": "collection_id", "limit": -1,
                                                        "facet": {
                                                            "unique_series_filter_and_cart": "unique(SeriesInstanceUID)"},
                                                        "domain": {"filter": ""}}
@@ -1262,51 +1263,50 @@ cart_facets_serieslvl = {"series_in_cart": {"type": "terms", "field": "collectio
 
 upstream_cart_facets = {
 
-              "upstream_collection_cart": {"type": "terms", "field": "collection_id", "limit":500,
+              "upstream_collection_cart": {"type": "terms", "field": "collection_id", "limit":-1,
                                                  "facet": {
                                                             "cart_series_in_collection": "unique(SeriesInstanceUID)"
                                                          },
                                                 "domain": {"excludeTags": "f0,f1", "filter":""}
                                           },
 
-              "upstream_case_cart": {"type": "terms", "field": "PatientID", "limit":500,
+              "upstream_case_cart": {"type": "terms", "field": "PatientID", "limit":-1,
                                                  "facet": { "cart_series_in_case": "unique(SeriesInstanceUID)"},
                                                 "domain": {"excludeTags": "f0,f1", "filter":""}},
 
-              "upstream_study_cart": {"type": "terms", "field": "StudyInstanceUID", "limit": 500,
+              "upstream_study_cart": {"type": "terms", "field": "StudyInstanceUID", "limit": -1,
                            "facet": {"cart_series_in_study": "unique(SeriesInstanceUID)"},
                            "domain": {"excludeTags": "f0,f1", "filter": ""}},
 
-             "upstream_collection_filter": {"type": "terms", "field": "collection_id", "limit":500,
+             "upstream_collection_filter": {"type": "terms", "field": "collection_id", "limit":-1,
                                                  "facet": {
                                                             "filter_series_in_collection": "unique(SeriesInstanceUID)"
                                                          },
                                                 "domain": {"excludeTags": "f0, f1", "filter":""}
                                           },
 
-             "upstream_case_filter": {"type": "terms", "field": "PatientID", "limit":500,
+             "upstream_case_filter": {"type": "terms", "field": "PatientID", "limit":-1,
                                                  "facet": { "filter_series_in_case": "unique(SeriesInstanceUID)"},
                                                 "domain": {"excludeTags": "f0, f1"}, "filter":""},
 
-             "upstream_study_filter": {"type": "terms", "field": "StudyInstanceUID", "limit": 500,
+             "upstream_study_filter": {"type": "terms", "field": "StudyInstanceUID", "limit": -1,
                            "facet": {"filter_series_in_study": "unique(SeriesInstanceUID)"},
                            "domain": {"excludeTags": "f0,f1"}, "filter":""},
 
-             "upstream_collection_filter_cart": {"type": "terms", "field": "collection_id", "limit": 500,
+             "upstream_collection_filter_cart": {"type": "terms", "field": "collection_id", "limit": -1,
                                  "facet": {
                                      "filter_cart_series_in_collection": "unique(SeriesInstanceUID)"
                                  },
                                  "domain": {"excludeTags": "f0,f1", "filter": ""}
                                  },
 
-             "upstream_case_filter_cart": {"type": "terms", "field": "PatientID", "limit": 500,
+             "upstream_case_filter_cart": {"type": "terms", "field": "PatientID", "limit": -1,
                            "facet": {"filter_cart_series_in_case": "unique(SeriesInstanceUID)"},
                            "domain": {"excludeTags": "f0,f1", "filter": ""}},
 
-             "upstream_study_filter_cart": {"type": "terms", "field": "StudyInstanceUID", "limit": 500,
+             "upstream_study_filter_cart": {"type": "terms", "field": "StudyInstanceUID", "limit": -1,
                             "facet": {"filter_cart_series_in_study": "unique(SeriesInstanceUID)"},
                             "domain": {"excludeTags": "f0,f1", "filter": ""}},
-
 }
 
 
@@ -1415,13 +1415,20 @@ def generate_solr_cart_and_filter_strings(current_filters,filtergrp_list, partit
     return([current_filt_str, cart_query_str_all, cart_query_str_studylvl, cart_query_str_serieslvl])
 
 
-def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,filtergrp_list, partitions, limit, offset):
+def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,filtergrp_list, partitions, limit, offset, table_search=False):
     with_cart= False
     with_filter=False
     attr_field = {"collections":"collection_id", "cases":"PatientID","studies":"StudyInstanceUID","series":"SeriesInstanceUID"}
     field_attr = {"collection_id":"collections", "PatientID":"cases","StudyInstanceUID":"studies","SeriesInstanceUID":"series"}
     field_tabletype = {"collection_id":"collections", "PatientID":"cases", "StudyInstanceUID":"studies",
                        "SeriesInstanceUID":"series"}
+    tokenized_fields = {
+        "SeriesInstanceUID": "SeriesInstanceUID_tokenized",
+        "PatientID": "PatientID_tokenized",
+        "StudyInstanceUID": "StudyInstanceUID_tokenized",
+    }
+
+    table_search_filter = None
 
     aggregate_level = 'StudyInstanceUID'
     #if (tabletype == "series"):
@@ -1458,7 +1465,13 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
 
     for tblitem in tblitems:
         if (tblitem in current_filters):
-            tblfiltstr=tblfiltstr+'(+'+tblitem+':(' + ' OR '.join(['"' + x +'"' for x in current_filters[tblitem]]) + '))'
+            print(table_search)
+            print(tblitem)
+            print(attr_field[tabletype])
+            if table_search and tblitem == attr_field[tabletype]:
+                tblfiltstr += '(+{}:{})'.format(tokenized_fields[tblitem], current_filters[tblitem][0])
+            else:
+                tblfiltstr += '(+'+tblitem+':(' + ' OR '.join(['"' + x +'"' for x in current_filters[tblitem]]) + '))'
             del(current_filters[tblitem])
     [current_filt_str, cart_query_str_all, cart_query_str_studylvl, cart_query_str_serieslvl] = generate_solr_cart_and_filter_strings(current_filters,filtergrp_list,partitions)
     no_tble_item_filt_str = current_filt_str
@@ -1503,7 +1516,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         num_found = rng_query['response']['numFound']
         #rngids=rng_query["per_id"]
     else:
-
         sortStr = sortarg + " " + sortdir
         imgNm= image_source_series.name if (tabletype=="series") else image_source.name
 
@@ -1512,7 +1524,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         else:
             fqs=None
 
-
         rng_query = query_solr(
             collection=imgNm, fields=[id], query_string=None, fqs=fqs,
             facets=None, sort=sortStr, counts_only=False, collapse_on=collapse_id, offset=offset, limit=limit,
@@ -1520,6 +1531,10 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         )
         sorted_ids=[x[id] for x in rng_query['response']['docs']]
         num_found=rng_query['response']['numFound']
+
+    # If nothing matched our search string, there's no need to do the rest.
+    if num_found <= 0:
+        return [num_found, []]
 
     rngfilt = '(+'+id+':('+ ' OR '.join(['"'+x+'"' for x in sorted_ids ]) +'))'
     # define table array to put results in tabular form
@@ -1601,8 +1616,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
 
     attr_results = []
     # if table is collections, don't need attributes only cart stats. if table is series used series store
-
-    if not (tabletype =="series") and not (tabletype =="collections"):
+    if tabletype not in ["series", "collections"]:
         solr_result = query_solr(
             collection=image_source.name, fields=field_list, query_string=None, fqs=fqset[:],
             facets=None,sort=sortStr, counts_only=False,collapse_on=collapse_id, offset=0, limit=limit,
@@ -1620,7 +1634,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
 
     # add attribute values to table_arr from solr_result; not needed for collections we are only getting facets for
     # collections
-
     for attr_result in attr_results:
         for doc in attr_result:
             curid = doc[id]
@@ -1695,7 +1708,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
             custom_facets["upstream_case_filter_cart"] = copy.deepcopy(upstream_cart_facets["upstream_case_filter_cart"])
             custom_facets["upstream_case_filter_cart"]["domain"]["filter"] = caserngQ+no_tble_item_filt_str
 
-
         if tabletype in ["series"]:
             studystr= list(attrRowNumMp["studies"].keys())
             studyrngfilt = '(+StudyInstanceUID:('+ ' OR '.join(['"'+x+'"' for x in studystr ]) +'))'
@@ -1707,8 +1719,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
 
         in_cart_domain_all = {"filter": '(+'+cart_query_str_all+')', "excludeTags":"f1"} if with_filter else {"filter": '(+'+cart_query_str_all+')'}
         in_filter_and_cart_domain_all = {"filter": '(+'+cart_query_str_all+')'}
-
-
 
         custom_facets["items_in_filter_and_cart"] = copy.deepcopy(cart_facets["items_in_filter_and_cart"])
         custom_facets["items_in_filter_and_cart"]["field"] = id
@@ -1738,7 +1748,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
     facet_srcs = []
     solr_facet_result = query_solr(
         collection=image_source.name, fields=field_list, query_string=None, fqs=fqset[:],
-        facets=custom_facets, sort=sortStr, counts_only=True, collapse_on=None, offset=0, limit=limit,
+        facets=custom_facets, sort=sortStr, counts_only=True, collapse_on=None, offset=0, limit=0,
         uniques=None, with_cursor=None, stats=None, totals=None, op='AND'
     )
     if ('facets' in solr_facet_result):
@@ -1755,7 +1765,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
         custom_facets["series_in_cart"]["field"] = id
         custom_facets["series_in_cart"]["domain"] = in_cart_domain_serieslvl
 
-
         if tabletype in ["cases","studies","series"]:
             colrngQ = '(' + colrngfilt + ')(' + cart_query_str_serieslvl + ')'
             custom_facets["upstream_collection_cart"] = copy.deepcopy(upstream_cart_facets["upstream_collection_cart"])
@@ -1764,7 +1773,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
             custom_facets["upstream_collection_filter"]["domain"]["filter"] = colrngfilt+no_tble_item_filt_str
             custom_facets["upstream_collection_filter_cart"] = copy.deepcopy(upstream_cart_facets["upstream_collection_filter_cart"])
             custom_facets["upstream_collection_filter_cart"]["domain"]["filter"] = colrngQ+no_tble_item_filt_str
-
 
         if tabletype in ["studies","series"]:
             caserngQ = '(' + caserngfilt + ')(' + cart_query_str_serieslvl + ')'
@@ -1784,11 +1792,9 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
             custom_facets["upstream_study_filter_cart"] = copy.deepcopy(upstream_cart_facets["upstream_study_filter_cart"])
             custom_facets["upstream_study_filter_cart"]["domain"]["filter"] = studyrngQ+no_tble_item_filt_str
 
-
-
         solr_facet_result_serieslvl = query_solr(
             collection=image_source_series.name, fields=field_list, query_string=None, fqs=fqset[:],
-            facets=custom_facets, sort=sortStr, counts_only=True, collapse_on=None, offset=0, limit=limit,
+            facets=custom_facets, sort=sortStr, counts_only=True, collapse_on=None, offset=0, limit=0,
             uniques=None, with_cursor=None, stats=None, totals=None, op='AND'
         )
 
