@@ -22,7 +22,7 @@ from .utils import build_with_retries
 
 
 GOOGLE_GROUP_ADMIN = settings.GOOGLE_GROUP_ADMIN
-GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
+#GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
 
 DIRECTORY_SCOPES = [
     'https://www.googleapis.com/auth/admin.directory.group',
@@ -33,7 +33,8 @@ DIRECTORY_SCOPES = [
     'https://www.googleapis.com/auth/admin.directory.user.readonly'
 ]
 
-
+# Not used 4/25/25
+'''
 def get_directory_resource():
 
     credentials = ServiceAccountCredentials.from_json_keyfile_name(
@@ -44,3 +45,4 @@ def get_directory_resource():
     service = build_with_retries('admin', 'directory_v1', None, 2, http=http_auth)
 
     return service, http_auth
+'''

@@ -643,12 +643,15 @@ def submit_manifest_job(
     ):
     cart_filters = parse_partition_to_filter(cart_partition) if cart_partition else None
     child_records = None if cart_filters else "StudyInstanceUID"
-    service_account_info = json.load(open(settings.GOOGLE_APPLICATION_CREDENTIALS))
-    audience = "https://pubsub.googleapis.com/google.pubsub.v1.Publisher"
-    credentials = jwt.Credentials.from_service_account_info(
-        service_account_info, audience=audience
-    )
-    publisher = pubsub_v1.PublisherClient(credentials=credentials)
+    # WJRL 4/25/25: Rewrite to not use keyfile. These credentials are not needed:
+    #service_account_info = json.load(open(settings.GOOGLE_APPLICATION_CREDENTIALS))
+    #audience = "https://pubsub.googleapis.com/google.pubsub.v1.Publisher"
+    #credentials = jwt.Credentials.from_service_account_info(
+    #    service_account_info, audience=audience
+    #)
+    #publisher = pubsub_v1.PublisherClient(credentials=credentials)
+    # WJRL 4/25/25 This should end up using default credentials:
+    publisher = pubsub_v1.PublisherClient()
     jobId = str(uuid4())
     data_version_display = "IDC Data Version(s): {}".format(str(data_version.get_displays(joined=True)))
     timestamp = time.time()

@@ -35,8 +35,11 @@ COMPUTE_SCOPES = ['https://www.googleapis.com/auth/compute',
 #     service = build_with_retries('cloudresourcemanager', 'v1beta1', credentials, 2)
 #     return service
 
+# Not used 4/25/25
+'''
 def get_compute_resource():
     credentials = GoogleCredentials.from_stream(settings.GOOGLE_APPLICATION_CREDENTIALS).create_scoped(COMPUTE_SCOPES)
     http = credentials.authorize(httplib2.Http())
     service = build('compute', 'v1', http=http, cache_discovery=False)
     return service
+'''

@@ -20,7 +20,8 @@ from .utils import build_with_retries
 
 CRM_SCOPES = ['https://www.googleapis.com/auth/cloud-platform']
 
-
+# Not used 4/25/25
+'''
 def get_crm_resource():
     """
     Returns: a Cloud Resource Manager service client for calling the API.
@@ -28,3 +29,4 @@ def get_crm_resource():
     credentials = GoogleCredentials.get_application_default()
     service = build_with_retries('cloudresourcemanager', 'v1beta1', credentials, 2)
     return service
+'''
