@@ -1465,11 +1465,10 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
 
     for tblitem in tblitems:
         if (tblitem in current_filters):
-            print(table_search)
-            print(tblitem)
-            print(attr_field[tabletype])
             if table_search and tblitem == attr_field[tabletype]:
-                tblfiltstr += '(+{}:{})'.format(tokenized_fields[tblitem], current_filters[tblitem][0])
+                reg = re.compile(r'[^A-Za-z\.0-9\-_]', re.IGNORECASE)
+                val = reg.sub("?", current_filters[tblitem][0])
+                tblfiltstr += '(+{}:{})'.format(tokenized_fields[tblitem], val)
             else:
                 tblfiltstr += '(+'+tblitem+':(' + ' OR '.join(['"' + x +'"' for x in current_filters[tblitem]]) + '))'
             del(current_filters[tblitem])
