@@ -1469,7 +1469,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters,f
                 val = current_filters[tblitem][0]
                 reg = re.compile(r'[^A-Za-z\.0-9\-_]', re.IGNORECASE)
                 val = reg.sub("?", val[:min(len(val), 256)])
-                tblfiltstr += '(+{}:{})'.format(tokenized_fields[tblitem], val)
+                tblfiltstr += '(+{}:"{}")'.format(tokenized_fields[tblitem], val)
             else:
                 tblfiltstr += '(+'+tblitem+':(' + ' OR '.join(['"' + x +'"' for x in current_filters[tblitem]]) + '))'
             del(current_filters[tblitem])
