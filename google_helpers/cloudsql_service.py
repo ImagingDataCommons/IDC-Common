@@ -19,7 +19,8 @@ from django.conf import settings
 import httplib2
 from .utils import build_with_retries
 
-
+# Not used 4/25/25
+'''
 def get_sql_resource():
 
     CLOUDSQL_SCOPES = [
@@ -33,3 +34,4 @@ def get_sql_resource():
     http = credentials.authorize(http)
     service = build_with_retries('sqladmin', 'v1beta4', None, 2, http=http)
     return service
+'''

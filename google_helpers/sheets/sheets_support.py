@@ -27,7 +27,8 @@ from .sheets_service import get_sheet_service
 
 logger = logging.getLogger('main_logger')
 
-
+# WJRL 4/25/25 Appears to be unused
+'''
 class SheetsSupport(SheetsABC):
     def __init__(self, project_id, executing_project=None):
         # Project which will execute any jobs run by this class
@@ -36,6 +37,7 @@ class SheetsSupport(SheetsABC):
         self.project_id = project_id
 
         self.sheet_service = get_sheet_service()
+'''
 
 
 

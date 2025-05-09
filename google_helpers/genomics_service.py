@@ -20,7 +20,7 @@ from django.conf import settings
 from httplib2 import Http
 
 
-GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
+#GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
 
 
 GENOMICS_SCOPES = [
@@ -29,7 +29,8 @@ GENOMICS_SCOPES = [
     'https://www.googleapis.com/auth/devstorage.read_write'
 ]
 
-
+# Not used 4/25/25
+'''
 def get_genomics_resource():
 
     credentials = ServiceAccountCredentials.from_json_keyfile_name(
@@ -38,5 +39,5 @@ def get_genomics_resource():
     http_auth = credentials.authorize(Http())
     service = discovery.build('genomics', 'v1', http=http_auth, cache_discovery=False)
     return service, http_auth
-
+'''
 

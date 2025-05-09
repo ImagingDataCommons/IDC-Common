@@ -20,12 +20,13 @@ from django.conf import settings
 import httplib2
 
 
-GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
+#GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
 PROJECT_ID = settings.GCLOUD_PROJECT_ID
 
 PUBSUB_SCOPES = ["https://www.googleapis.com/auth/pubsub"]
 
-
+# Not used 4/425/25
+'''
 def get_pubsub_service():
     credentials = GoogleCredentials.from_stream(settings.GOOGLE_APPLICATION_CREDENTIALS).create_scoped(PUBSUB_SCOPES)
     http = httplib2.Http()
@@ -36,4 +37,4 @@ def get_pubsub_service():
 
 def get_full_topic_name(topic_name):
     return 'projects/{}/topics/{}'.format(PROJECT_ID, topic_name)
-
+'''
