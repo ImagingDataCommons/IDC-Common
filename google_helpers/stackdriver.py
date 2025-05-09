@@ -23,7 +23,7 @@ import google.cloud.logging as stackdriver_logging
 
 class StackDriverLogger(object):
 
-    def __init__(self, project_name, credentials):
+    def __init__(self, project_name):
         self.project_name = project_name
         self.logging_client = stackdriver_logging.Client(project=self.project_name)
 
@@ -76,9 +76,6 @@ class StackDriverLogger(object):
     @classmethod
     def build_from_django_settings(cls):
         from django.conf import settings
-        #This is from ISB-CGC version
-        #project_name = settings.GCLOUD_PROJECT_ID
-        # This is from IDC version:
-        project_name = settings.BIGQUERY_PROJECT_ID
+        project_name = settings.GCLOUD_PROJECT_ID
         return cls(project_name)
 
