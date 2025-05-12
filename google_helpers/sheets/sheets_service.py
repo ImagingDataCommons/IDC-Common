@@ -20,6 +20,8 @@ import httplib2
 from .utils import build_with_retries
 
 
+# WJRL 4/25/25 Appears to be unused
+'''
 def get_sheet_service():
 
     SHEETS_SCOPES = [
@@ -32,3 +34,4 @@ def get_sheet_service():
     http = credentials.authorize(http)
     service = build_with_retries('sheets', 'v4', None, 2, http=http)
     return service
+'''

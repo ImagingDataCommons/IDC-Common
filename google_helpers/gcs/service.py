@@ -25,7 +25,9 @@ STORAGE_SCOPES = [
     'https://www.googleapis.com/auth/devstorage.full_control'
 ]
 
-
+# WJRL This version (google_helpers.gcs) appears to be unused 4/25/25:
+'''
 def get_storage_resource():
     credentials = GoogleCredentials.from_stream(settings.GOOGLE_APPLICATION_CREDENTIALS).create_scoped(STORAGE_SCOPES)
     return discovery.build('storage', 'v1', credentials=credentials, cache_discovery=False)
+'''

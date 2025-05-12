@@ -20,11 +20,12 @@ from django.conf import settings
 from httplib2 import Http
 
 
-GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
+#GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
 
 SUPERADMIN_FOR_REPORTS = settings.SUPERADMIN_FOR_REPORTS
 
-
+# Not used 4/25/25
+'''
 def get_reports_resource():
 
     credentials = ServiceAccountCredentials.from_json_keyfile_name(
@@ -35,3 +36,4 @@ def get_reports_resource():
 
     service = discovery.build('admin', 'reports_v1', http=http_auth, cache_discovery=False)
     return service, http_auth
+'''
