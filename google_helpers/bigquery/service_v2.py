@@ -39,12 +39,16 @@ class BigQueryServiceSupport(object):
         credentials = GoogleCredentials.get_application_default()
         return cls(credentials)
 
+    # WJRL 4/25/25: Not seeing this is used
     @classmethod
     def build_from_file(cls, path):
-        credentials = GoogleCredentials.from_stream(path).create_scoped(BIGQUERY_SCOPES)
-        return cls(credentials)
+        raise Exception("method not implemented!")
+        #credentials = GoogleCredentials.from_stream(path).create_scoped(BIGQUERY_SCOPES)
+        #return cls(credentials)
 
+    # WJRL 4/25/25: Not seeing this is used
     @classmethod
     def build_from_django_settings(cls):
-        from django.conf import settings as django_settings
-        return cls.build_from_file(django_settings.GOOGLE_APPLICATION_CREDENTIALS)
+        raise Exception("method not implemented!")
+        #from django.conf import settings as django_settings
+        #return cls.build_from_file(django_settings.GOOGLE_APPLICATION_CREDENTIALS)

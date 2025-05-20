@@ -19,7 +19,8 @@ from django.conf import settings
 import httplib2
 from .utils import build_with_retries
 
-
+# Not used 4/25/25
+'''
 def get_iam_resource():
     """Returns an Identity Access Management service client for calling the API.
     """
@@ -34,3 +35,4 @@ def get_iam_resource():
     http = credentials.authorize(http)
     service = build_with_retries('iam', 'v1', None, 2, http=http)
     return service
+'''

@@ -20,7 +20,7 @@ from django.conf import settings
 from httplib2 import Http
 
 
-GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
+#GOOGLE_APPLICATION_CREDENTIALS = settings.GOOGLE_APPLICATION_CREDENTIALS
 
 
 LOGGING_SCOPES = [
@@ -29,6 +29,8 @@ LOGGING_SCOPES = [
     'https://www.googleapis.com/auth/logging.write'
 ]
 
+# Not used 4/25/25
+'''
 def get_logging_resource():
     """Returns a Cloud Logging service client for calling the API.
     """
@@ -40,3 +42,4 @@ def get_logging_resource():
 
     service = discovery.build('logging', 'v1beta3', http=http_auth, cache_discovery=False)
     return service, http_auth
+'''
