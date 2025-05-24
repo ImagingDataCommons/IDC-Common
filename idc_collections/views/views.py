@@ -31,7 +31,6 @@ from django.conf import settings
 from django.db import connection
 from django.urls import reverse
 from collections import OrderedDict
-from data_upload.models import UserUpload, UserUploadedFile
 from idc_collections.models import User_Feature_Definitions, User_Feature_Counts, \
     Program, Collection
 from solr_helpers import *
