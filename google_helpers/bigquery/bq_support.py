@@ -25,7 +25,7 @@ from google_helpers.bigquery.service import get_bigquery_service
 from google_helpers.bigquery.abstract import BigQueryABC
 from .utils import build_bq_where_clause as build_bq_where_clause_, FIXED_TYPES
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 MAX_INSERT = settings.MAX_BQ_INSERT
 BQ_ATTEMPT_MAX = settings.BQ_MAX_ATTEMPTS

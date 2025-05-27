@@ -36,7 +36,7 @@ from google_helpers.bigquery.bq_support import BigQuerySupport
 from idc_collections.collex_metadata_utils import get_collex_metadata, filter_manifest
 from idc_collections.models import DataSetType,DataSource
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 DENYLIST_RE = settings.DENYLIST_RE
 
 
