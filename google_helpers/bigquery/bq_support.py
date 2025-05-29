@@ -706,7 +706,7 @@ class BigQuerySupport(BigQueryABC):
                 parameter_type = (
                     'STRING' if (
                             type(type_check) not in [int, float, complex] and re.compile(r'[^0-9\.,]',
-                                                                                         RE.UNICODE|RE.IGNORECASE).search(
+                                                                                         re.UNICODE|re.IGNORECASE).search(
                         type_check)
                     ) else 'NUMERIC'
                 )

@@ -142,7 +142,7 @@ def _save_cohort(user, filters=None, name=None, cohort_id=None, version=None, de
 
         cohort_details = {}
         if name or desc:
-            denylist = re.compile(DENYLIST_RE, RE.UNICODE|RE.IGNORECASE)
+            denylist = re.compile(DENYLIST_RE, re.UNICODE|re.IGNORECASE)
             check = {'name': {'val': name, 'match': denylist.search(str(name))},
                      'description': {'val': desc, 'match': denylist.search(str(desc))}}
             if len([check[x]['match'] for x in check if check[x]['match'] is not None]):
