@@ -23,6 +23,7 @@ from django.core import serializers
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.views.decorators.cache import never_cache, cache_page
 from django.contrib import messages
 from django.conf import settings
 from django.db.models import Q
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 DENYLIST_RE = settings.DENYLIST_RE
 
-
+@cache_page(60 *15)
 def collection_list(request):
     template = 'collections/collections_list.html'
 
@@ -62,6 +63,7 @@ def collection_list(request):
     return render(request, template, context)
 
 
+# @cache_page(60 *15)
 # def collection_detail(request):
 #     template = 'collections/collection_detail.html'
 #
