@@ -100,8 +100,6 @@ def save_cohort_api(request):
 def cohort_manifest_api(request, cohort_id=0):
     if debug: logger.debug('Called '+sys._getframe().f_code.co_name)
 
-    # template = 'cohorts/cohort_filelist{}.html'.format("_{}".format(panel_type) if panel_type else "")
-
     if cohort_id == 0:
         manifest_info = {
             "message": "A cohort ID was not specified.".format(cohort_id),

@@ -64,6 +64,5 @@ urlpatterns = [
     re_path(r'^download_manifest/(?P<cohort_id>\d+)/', views.download_cohort_manifest, name='cohort_manifest'),
     re_path(r'bq_string/(?P<cohort_id>\d+)/', views.get_query_str_response, name='bq_string'),
     re_path(r'^download_manifest/', views.download_cohort_manifest, name='cohort_manifest_base'),
-    re_path(r'^download_ids/(?P<cohort_id>\d+)/', views.cohort_uuids, name='download_ids'),
     re_path(r'^get_metadata_ajax/$', views.get_metadata, name='metadata_count_ajax')
 ]

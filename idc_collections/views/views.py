@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 
 DENYLIST_RE = settings.DENYLIST_RE
 
+
 @cache_page(60 *15)
 def collection_list(request):
     template = 'collections/collections_list.html'
