@@ -21,6 +21,7 @@ import csv
 import re
 from uuid import uuid4
 import os
+import json
 import io
 from time import sleep
 from idc_collections.models import Collection, Attribute_Tooltips, DataSource, Attribute, \
@@ -1653,7 +1654,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters, 
     }
 
     table_search_filter = None
-
     aggregate_level = 'StudyInstanceUID'
     # if (tabletype == "series"):
     #    aggregate_level = 'SeriesInstanceUID'
@@ -1854,7 +1854,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters, 
             facets=None, sort=sortStr, counts_only=False, collapse_on=collapse_id, offset=0, limit=limit,
             uniques=None, with_cursor=None, stats=None, totals=None, op='AND'
         )
-        print(solr_result_serieslvl)
         attr_results.append(solr_result_serieslvl['response']['docs'])
 
     # add attribute values to table_arr from solr_result; not needed for collections we are only getting facets for
@@ -1985,7 +1984,6 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters, 
 
     # if there is a serieslvl component of cart get series stats for that
     if not (cart_query_str_serieslvl == None) and (len(cart_query_str_serieslvl) > 0):
-
         custom_facets = cart_facets_serieslvl
         custom_facets["series_in_filter_and_cart"]["domain"] = {"filter": cart_query_str_serieslvl}
         custom_facets["series_in_filter_and_cart"]["field"] = id
@@ -2152,7 +2150,6 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
                 limit=int(mxseries), facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
                 uniques=None, with_cursor=None, stats=None, totals=totals, op='AND'
             )
-
             if with_records and ('response' in solr_result_series_lvl) and (
                     'docs' in solr_result_series_lvl['response']):
                 serieslvl_found = True
@@ -2179,7 +2176,6 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
             sort=sortStr, counts_only=False, collapse_on=None, uniques=None, with_cursor=None, stats=None,
             totals=['SeriesInstanceUID'], op='AND', limit=int(limit), offset=int(offset)
         )
-
         solr_result['response']['total'] = solr_result['facets']['total_SeriesInstanceUID']
         solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
     else:
@@ -2188,8 +2184,6 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
         solr_result['response']['docs'] = []
         solr_result['response']['total_instance_size'] = 0
 
-    print(";pldkjfgl;dsjkfg;ldsgkj")
-    logger.info(solr_result)
     if with_records and serieslvl_found and (len(solr_result_series_lvl['response']['docs']) > 0):
         ind = 0
         rowDic = {}
@@ -2219,17 +2213,11 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
                 rowsWithSeries.append(studyind)
             if 'series_buckets' not in studyrow:
                 studyrow['series_buckets'] = {}
-            if 'series_instances' not in studyrow:
-                studyrow['series_instances'] = {}
             if crdcid not in studyrow['series_buckets']:
                 studyrow['series_buckets'][crdcid] = {
                     'aws_bucket': row['aws_bucket'][0],
                     'gcs_bucket': row['gcs_bucket'][0],
                 }
-            if crdcid not in studyrow['series_instances']:
-                studyrow['series_instances'][crdcid]: []
-            studyrow['series_instances'][crdcid].extent(row['SOPInstanceUID'])
-            studyrow['series_instances'][crdcid] = list(set(studyrow['series_instances'][crdcid]))
             if not ('crdcval' in studyrow) and ('crdc_series_uuid' in row):
                 studyrow['crdcval'] = []
             if not ('seriestotsize' in studyrow):
@@ -2315,7 +2303,6 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
         query_list.append(query_string_for_filt)
 
     query_str = create_cart_query_string(query_list, partitions, False)
-    # query_str = "{!join to=StudyInstanceUID from=StudyInstanceUID}(" + query_str + ")"
     solr_result = query_solr(collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str],
                              facets=custom_facets, sort=None, counts_only=False, collapse_on='SeriesInstanceUID',
                              offset=offset, limit=limit, uniques=None,
