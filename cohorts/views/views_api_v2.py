@@ -86,7 +86,8 @@ def save_cohort_api(request):
         for attr in Attribute.objects.filter(name__in=list(filters_by_name.keys())).values('id', 'name'):
             filters_by_id[str(attr['id'])] = filters_by_name[attr['name']]
         response = _save_cohort(user, filters=filters_by_id, name=cohort_name, desc=description, version=version,
-                                no_stats=version.active==False)
+                                # no_stats=version.active==False)
+                                no_stats = True)
         cohort_id = response['cohort_id']
         idc_data_version = Cohort.objects.get(id=cohort_id).get_data_versions()[0].version_number
 
