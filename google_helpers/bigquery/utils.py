@@ -178,7 +178,7 @@ def build_bq_filter_and_params(filters, comb_with='AND', param_suffix=None, with
             type_check = values[0] if type(values[0]) is not list else values[0][0]
             parameter_type = (
                 'STRING' if (
-                        type(type_check) not in [int, float, complex] and re.compile(r'[^0-9\.,]', re.UNICODE).search(
+                        type(type_check) not in [int, float, complex] and re.compile(r'[^0-9\.,]', re.UNICODE|re.IGNORECASE).search(
                     type_check)
                 ) else 'NUMERIC'
             )
@@ -416,7 +416,7 @@ def build_bq_where_clause(filters, join_with_space=False, comb_with='AND', field
             type_check = values[0] if type(values[0]) is not list else values[0][0]
             parameter_type = (
                 'STRING' if (
-                        type(type_check) not in [int, float, complex] and re.compile(r'[^0-9\.,]', re.UNICODE).search(
+                        type(type_check) not in [int, float, complex] and re.compile(r'[^0-9\.,]', re.UNICODE|re.IGNORECASE).search(
                     type_check)
                 ) else 'NUMERIC'
             )

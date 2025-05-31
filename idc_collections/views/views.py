@@ -23,6 +23,7 @@ from django.core import serializers
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.views.decorators.cache import never_cache, cache_page
 from django.contrib import messages
 from django.conf import settings
 from django.db.models import Q
@@ -31,7 +32,6 @@ from django.conf import settings
 from django.db import connection
 from django.urls import reverse
 from collections import OrderedDict
-from data_upload.models import UserUpload, UserUploadedFile
 from idc_collections.models import User_Feature_Definitions, User_Feature_Counts, \
     Program, Collection
 from solr_helpers import *
@@ -42,11 +42,12 @@ import json
 import requests
 import logging
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 DENYLIST_RE = settings.DENYLIST_RE
 
 
+@cache_page(60 *15)
 def collection_list(request):
     template = 'collections/collections_list.html'
 
@@ -63,6 +64,7 @@ def collection_list(request):
     return render(request, template, context)
 
 
+# @cache_page(60 *15)
 # def collection_detail(request):
 #     template = 'collections/collection_detail.html'
 #

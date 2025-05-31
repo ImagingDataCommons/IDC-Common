@@ -22,7 +22,7 @@ from googleapiclient.errors import HttpError
 from http.client import HTTPException
 import logging
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 #
 # Use this in place of build() to catch all the bogus Google errors!

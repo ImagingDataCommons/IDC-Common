@@ -9,7 +9,7 @@ import logging
 from sharing.models import Shared_Resource
 from functools import reduce
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 
 class ProgramQuerySet(models.QuerySet):

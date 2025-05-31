@@ -11,7 +11,7 @@ from idc_collections.models import Attribute, DataSource, Attribute_Ranges, Data
 
 from google_helpers.bigquery.utils import MOLECULAR_CATEGORIES
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 SOLR_URI = settings.SOLR_URI
 SOLR_LOGIN = settings.SOLR_LOGIN

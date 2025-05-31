@@ -42,7 +42,7 @@ from google_helpers.bigquery.utils import MOLECULAR_CATEGORIES
 
 debug = True
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", "No data - zero rows fetched, selected, or processed")
 

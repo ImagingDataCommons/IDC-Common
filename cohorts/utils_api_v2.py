@@ -22,7 +22,7 @@ from django.conf import settings
 from idc_collections.models import ImagingDataCommonsVersion
 from idc_collections.collex_metadata_utils import get_bq_metadata, get_bq_string
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 DENYLIST_RE = settings.DENYLIST_RE
 
 NUMERIC_OPS = ('_btw', '_ebtw', '_btwe', '_ebtwe', '_gte', '_lte', '_gt', '_lt', '_eq')

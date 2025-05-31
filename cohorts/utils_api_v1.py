@@ -25,7 +25,7 @@ from idc_collections.collex_metadata_utils import get_bq_metadata, get_bq_string
 from google_helpers.bigquery.bq_support import BigQuerySupport
 
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 DENYLIST_RE = settings.DENYLIST_RE
 
 # Get the current if none specified

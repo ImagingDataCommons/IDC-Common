@@ -42,7 +42,7 @@ debug = settings.DEBUG # RO global for this file
 DENYLIST_RE = settings.DENYLIST_RE
 BQ_SERVICE = None
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
