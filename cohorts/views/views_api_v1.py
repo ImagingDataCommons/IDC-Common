@@ -45,7 +45,7 @@ debug = settings.DEBUG # RO global for this file
 DENYLIST_RE = settings.DENYLIST_RE
 BQ_SERVICE = None
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 
 @csrf_exempt
@@ -99,8 +99,6 @@ def save_cohort_api(request):
 @require_http_methods(["GET"])
 def cohort_manifest_api(request, cohort_id=0):
     if debug: logger.debug('Called '+sys._getframe().f_code.co_name)
-
-    # template = 'cohorts/cohort_filelist{}.html'.format("_{}".format(panel_type) if panel_type else "")
 
     if cohort_id == 0:
         manifest_info = {

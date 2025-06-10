@@ -25,8 +25,8 @@ STORAGE_SCOPES = [
     'https://www.googleapis.com/auth/devstorage.full_control'
 ]
 
-
+# WJRL 4/25/25 This used in several places.
 def get_storage_resource():
-    credentials = GoogleCredentials.from_stream(settings.GOOGLE_APPLICATION_CREDENTIALS).create_scoped(STORAGE_SCOPES)
+    credentials = GoogleCredentials.get_application_default().create_scoped(STORAGE_SCOPES)
     service = build_with_retries('storage', 'v1', credentials, 2)
     return service
