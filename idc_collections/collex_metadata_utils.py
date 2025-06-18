@@ -1700,8 +1700,12 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters, 
         with_filter = False
     if (cart_query_str_all is not None) and (len(cart_query_str_all) > 0):
         with_cart = True
+
+    # ok this condition assumes every collection_id sent is valid. Correct for normal workflow from webapp
     if (tabletype == "collections"):
         sorted_ids = current_filters["collection_id"]
+        #also needed
+        num_found=len(sorted_ids)
     elif ("facetfields" in table_data) and (sortarg in table_data["facetfields"]):
         # when sorting by a 'facet' field (# of cases, # of studies etc.), we need to find the set of ids selected from
         # this field by the limit, offset params in a preliminary solr call, then add that set as a filter to limit the
