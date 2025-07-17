@@ -22,7 +22,7 @@ from . import views
 
 
 urlpatterns = [
-    re_path(r'^', include(google_urls)),
-    re_path(r'^', include(allauth_urls)),
+    # re_path(r'^', include(google_urls)),
+    # re_path(r'^', include(allauth_urls)),
     re_path(r'^logout', views.extended_logout_view, name='account_logout'),
 ]
