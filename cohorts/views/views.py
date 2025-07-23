@@ -56,12 +56,13 @@ from django.http import HttpResponse, JsonResponse
 from django.http import StreamingHttpResponse
 from django.shortcuts import render, redirect
 from django.template.loader import get_template
+from django.views.decorators.cache import never_cache, cache_page
 from django.utils import formats
 from django.views.decorators.csrf import csrf_protect, csrf_exempt
 from django.utils.html import escape
 
 from cohorts.models import Cohort, Cohort_Perms, Source, Filter, Cohort_Comments
-from cohorts.utils import _save_cohort, _delete_cohort, get_cohort_uuids, _get_cohort_stats
+from cohorts.utils import _save_cohort, _delete_cohort, _get_cohort_stats
 from idc_collections.models import Program, Collection, DataSource, DataVersion, ImagingDataCommonsVersion, Attribute
 from idc_collections.collex_metadata_utils import build_explorer_context, get_bq_metadata, get_bq_string, \
     create_file_manifest, build_static_map, STATIC_EXPORT_FIELDS
@@ -84,7 +85,7 @@ debug = settings.DEBUG # RO global for this file
 DENYLIST_RE = settings.DENYLIST_RE
 BQ_SERVICE = None
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 
 def convert(data):
@@ -99,7 +100,9 @@ def convert(data):
 
 
 def check_manifest_ready(request, file_name):
-    client = storage.Client.from_service_account_json(settings.GOOGLE_APPLICATION_CREDENTIALS)
+    # WJRL 4/25/25: use default app credentials:
+    client = storage.Client()
+    ##client = storage.Client.from_service_account_json(settings.GOOGLE_APPLICATION_CREDENTIALS)
     bucket = client.get_bucket(settings.RESULT_BUCKET)
     blob = bucket.blob("{}/{}".format(settings.USER_MANIFESTS_FOLDER, file_name))
 
@@ -107,7 +110,9 @@ def check_manifest_ready(request, file_name):
 
 
 def fetch_user_manifest(request, file_name):
-    client = storage.Client.from_service_account_json(settings.GOOGLE_APPLICATION_CREDENTIALS)
+    # WJRL 4/25/25: use default app credentials:
+    client = storage.Client()
+    ##client = storage.Client.from_service_account_json(settings.GOOGLE_APPLICATION_CREDENTIALS)
     bucket = client.get_bucket(settings.RESULT_BUCKET)
     blob = bucket.blob("{}/{}".format(settings.USER_MANIFESTS_FOLDER, file_name))
 
@@ -244,6 +249,7 @@ def cohorts_list(request, is_public=False):
 
 
 @login_required
+@cache_page(60 * 15)
 def cohort_detail(request, cohort_id):
     if debug: logger.debug('Called {}'.format(sys._getframe().f_code.co_name))
 
@@ -368,123 +374,6 @@ def delete_cohort(request):
         logger.exception(e)
             
     return redirect(reverse(redirect_url))
-
-
-@login_required
-@csrf_protect
-def cohort_filelist(request, cohort_id=0, panel_type=None):
-    if debug: logger.debug('Called '+sys._getframe().f_code.co_name)
-
-    template = 'cohorts/cohort_filelist{}.html'.format("_{}".format(panel_type) if panel_type else "")
-
-    if cohort_id == 0:
-        messages.error(request, 'Cohort requested does not exist.')
-        return redirect('/user_landing')
-
-    try:
-        metadata_data_attr_builds = {
-            'HG19': fetch_build_data_attr('HG19', panel_type),
-            'HG38': fetch_build_data_attr('HG38', panel_type)
-        }
-
-        build = request.GET.get('build', 'HG19')
-
-        metadata_data_attr = metadata_data_attr_builds[build]
-
-        has_access = auth_dataset_whitelists_for_user(request.user.id)
-
-        items = None
-
-        if panel_type:
-            inc_filters = json.loads(request.GET.get('filters', '{}')) if request.GET else json.loads(
-                request.POST.get('filters', '{}'))
-            if request.GET.get('case_barcode', None):
-                inc_filters['case_barcode'] = ["%{}%".format(request.GET.get('case_barcode')),]
-            items = cohort_files(cohort_id, inc_filters=inc_filters, user=request.user, build=build, access=has_access, type=panel_type)
-
-            for attr in items['metadata_data_counts']:
-                for val in items['metadata_data_counts'][attr]:
-                    metadata_data_attr[attr]['values'][val]['count'] = items['metadata_data_counts'][attr][val]
-                metadata_data_attr[attr]['values'] = [metadata_data_attr[attr]['values'][x] for x in metadata_data_attr[attr]['values']]
-
-        for attr_build in metadata_data_attr_builds:
-            if attr_build != build:
-                for attr in metadata_data_attr_builds[attr_build]:
-                    for val in metadata_data_attr_builds[attr_build][attr]['values']:
-                        metadata_data_attr_builds[attr_build][attr]['values'][val]['count'] = 0
-                    metadata_data_attr_builds[attr_build][attr]['values'] = [metadata_data_attr_builds[attr_build][attr]['values'][x] for x in
-                                                                             metadata_data_attr_builds[attr_build][attr]['values']]
-            metadata_data_attr_builds[attr_build] = [metadata_data_attr_builds[attr_build][x] for x in metadata_data_attr_builds[attr_build]]
-
-        cohort = Cohort.objects.get(id=cohort_id, active=True)
-        cohort.perm = cohort.get_perm(request)
-
-        # Check if cohort contains user data samples - return info message if it does.
-        # Get user accessed projects
-        user_projects = Project.get_user_projects(request.user)
-        cohort_sample_list = Samples.objects.filter(cohort=cohort, project__in=user_projects)
-        if cohort_sample_list.count():
-            messages.info(
-                request,
-                "File listing is not available for cohort samples that come from a user uploaded project. " +
-                "This functionality is currently being worked on and will become available in a future release."
-            )
-
-        logger.debug("[STATUS] Returning response from cohort_filelist")
-
-        return render(request, template, {'request': request,
-                                            'cohort': cohort,
-                                            'total_file_count': (items['total_file_count'] if items else 0),
-                                            'download_url': reverse('download_filelist', kwargs={'cohort_id': cohort_id}),
-                                            'export_url': reverse('export_data', kwargs={'cohort_id': cohort_id, 'export_type': 'file_manifest'}),
-                                            'metadata_data_attr': metadata_data_attr_builds,
-                                            'file_list': (items['file_list'] if items else []),
-                                            'file_list_max': MAX_FILE_LIST_ENTRIES,
-                                            'sel_file_max': MAX_SEL_FILES,
-                                            'img_thumbs_url': settings.IMG_THUMBS_URL,
-                                            'has_user_data': bool(cohort_sample_list.count() > 0),
-                                            'build': build,
-                                            'programs_this_cohort': cohort.get_program_names()})
-
-        logger.debug("[STATUS] Returning response from cohort_filelist, with exception")
-
-    except Exception as e:
-        logger.error("[ERROR] While trying to view the cohort file list: ")
-        logger.exception(e)
-        messages.error(request, "There was an error while trying to view the file list. Please contact the administrator for help.")
-        return redirect(reverse('cohort_details', args=[cohort_id]))
-
-
-@login_required
-@csrf_protect
-def cohort_uuids(request, cohort_id=0):
-    if cohort_id == 0:
-        messages.error(request, 'Cohort provided is invalid.')
-        return redirect('cohort_list')
-
-    try:
-        cohort_name = Cohort.objects.get(id=cohort_id).name
-
-        rows = ["UUIDs for Cohort {} ({})".format(str(cohort_id, cohort_name))]
-
-        rows.append(get_cohort_uuids(cohort_id))
-
-        pseudo_buffer = Echo()
-        writer = csv.writer(pseudo_buffer)
-        response = StreamingHttpResponse((writer.writerow(row) for row in rows),
-                                         content_type="text/csv")
-        response['Content-Disposition'] = 'attachment; filename="uuids_in_cohort_{}.csv"'.format(str(cohort_id))
-
-    except ObjectDoesNotExist:
-        messages.error(request, "A cohort with the ID {} was not found.".format(str(cohort_id)))
-        response = redirect('cohort_list')
-    except Exception as e:
-        logger.error("[ERROR] While trying to download a list of samples and cases for cohort {}:".format(str(cohort_id)))
-        logger.exception(e)
-        messages.error(request, "There was an error while attempting to obtain the list of samples and cases for cohort ID {}. Please contact the administrator.".format(str(cohort_id)))
-        response = redirect('cohort_list')
-
-    return response
 
 
 @login_required
@@ -687,6 +576,7 @@ def download_cohort_manifest(request, cohort_id=0):
     return redirect('cohort_list')
 
 
+@cache_page(60 * 15)
 def get_query_str_response(request, cohort_id=0):
     response = {
         'status': 200,
@@ -721,6 +611,7 @@ def get_query_str_response(request, cohort_id=0):
     return JsonResponse(response, status=status)
 
 
+@cache_page(60 * 15)
 def get_query_string(request, cohort_id=0):
     try:
         req = request.GET if request.method == 'GET' else request.POST
@@ -771,46 +662,3 @@ def get_query_string(request, cohort_id=0):
         logger.exception(e)
 
     return query
-
-
-@login_required
-def get_metadata(request):
-    filters = json.loads(request.GET.get('filters', '{}'))
-    comb_mut_filters = request.GET.get('mut_filter_combine', 'OR')
-    cohort = request.GET.get('cohort_id', None)
-    limit = request.GET.get('limit', None)
-    program_id = request.GET.get('program_id', None)
-
-    program_id = int(program_id) if program_id is not None else None
-
-    user = Django_User.objects.get(id=request.user.id)
-
-    if program_id is not None and program_id > 0:
-        results = public_metadata_counts(filters[str(program_id)], cohort, user, program_id, limit, comb_mut_filters=comb_mut_filters)
-
-        # If there is an extent cohort, to get the cohort's new totals per applied filters
-        # we have to check the unfiltered programs for their numbers and tally them in
-        # This includes user data!
-        if cohort:
-            results['cohort-total'] = results['total']
-            results['cohort-cases'] = results['cases']
-            cohort_pub_progs = Program.objects.filter(id__in=Collection.objects.filter(id__in=Samples.objects.filter(cohort_id=cohort).values_list('project_id',flat=True).distinct()).values_list('program_id',flat=True).distinct(), is_public=True)
-            for prog in cohort_pub_progs:
-                if prog.id != program_id:
-                    prog_res = public_metadata_counts(filters[str(prog.id)], cohort, user, prog.id, limit)
-                    results['cohort-total'] += prog_res['total']
-                    results['cohort-cases'] += prog_res['cases']
-
-            cohort_user_progs = Program.objects.filter(id__in=Collection.objects.filter(id__in=Samples.objects.filter(cohort_id=cohort).values_list('project_id',flat=True).distinct()).values_list('program_id', flat=True).distinct(), is_public=False)
-            for prog in cohort_user_progs:
-                user_prog_res = user_metadata_counts(user, {'0': {'user_program', [prog.id]}}, cohort)
-                results['cohort-total'] += user_prog_res['total']
-                results['cohort-cases'] += user_prog_res['cases']
-    else:
-        results = user_metadata_counts(user, filters, cohort)
-
-    if not results:
-        results = {}
-
-    return JsonResponse(results)
-

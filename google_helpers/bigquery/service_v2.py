@@ -39,12 +39,3 @@ class BigQueryServiceSupport(object):
         credentials = GoogleCredentials.get_application_default()
         return cls(credentials)
 
-    @classmethod
-    def build_from_file(cls, path):
-        credentials = GoogleCredentials.from_stream(path).create_scoped(BIGQUERY_SCOPES)
-        return cls(credentials)
-
-    @classmethod
-    def build_from_django_settings(cls):
-        from django.conf import settings as django_settings
-        return cls.build_from_file(django_settings.GOOGLE_APPLICATION_CREDENTIALS)
