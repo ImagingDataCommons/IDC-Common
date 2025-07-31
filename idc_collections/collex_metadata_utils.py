@@ -1100,6 +1100,11 @@ def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, Da
                         query_set.append(solr_query['queries'][attr])
                     else:
                         attStr = solr_query['queries'][attr].replace('"', '\\"')
+                        # certain attributes values include quotes, ie Manufacturer = \"GE Healthcare\" which leads to 'subqueries'
+                        # in filter strings with nested quotes, ie,
+                        # _query_:"{!join to=StudyInstanceUID from=StudyInstanceUID}(+Manufacturer:(""GE Healthcare""))"))
+                        # in this case extra backslashes are needed around the inner quotes
+                        attStr = attStr.replace('\\\\"', '\\\\\\"')
                         attStr = '(_query_:"{!join to=' + default_join_field + ' from=' + default_join_field + '}' + attStr + '")'
                         query_set.append(attStr)
                 # If it's in another source for this program, we need to join on that source
