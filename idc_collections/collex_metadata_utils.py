@@ -2295,7 +2295,7 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
             solr_query = build_solr_query(
                 copy.deepcopy(filtergrp),
                 with_tags_for_ex=False,
-                search_child_records_by=None
+                search_child_records_by=None, solr_default_op='AND'
             )
             query_set_for_filt = create_query_set(solr_query, aux_sources, image_source, all_ui_attrs, image_source,
                                                   DataSetType, default_join_field='StudyInstanceUID')
