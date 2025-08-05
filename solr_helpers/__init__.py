@@ -573,6 +573,11 @@ def build_solr_query(filters, comb_with='AND', with_tags_for_ex=False, subq_join
                     "{!join to=%s from=%s}%s" % (search_child_records_by[attr_name], search_child_records_by[attr_name],
                                                  query_str.replace("\"", "\\\"")))
 
+            # certain attributes values include quotes, ie Manufacturer = \"GE Healthcare\" which leads to 'subqueries'
+            # in filter strings with nested quotes, ie,
+            # _query_:"{!join to=StudyInstanceUID from=StudyInstanceUID}(+Manufacturer:(""GE Healthcare""))"))
+            # in this case extra backslashes are needed around the inner quotes
+            query_str = query_str.replace('\\\\"','\\\\\\"')
         full_query_str += query_str
 
         if with_tags_for_ex:
