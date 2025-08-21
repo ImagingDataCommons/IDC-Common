@@ -1279,7 +1279,7 @@ table_formats = {
         "parentid": "PatientID",
         "id": "StudyInstanceUID",
         "fields": ["collection_id", "PatientID", "StudyInstanceUID", 'StudyDescription', 'Modality', 'StudyDate',
-                   'access', 'crdc_series_uuid', 'gcs_bucket', 'aws_bucket', 'instance_size'],
+                   'access', 'crdc_series_uuid', 'gcs_bucket', 'aws_bucket', 'instance_size', 'source_DOI'],
         "facetfields": {
             "SeriesInstanceUID": "unique_series"
         },
@@ -1313,7 +1313,7 @@ table_formats = {
         "id": "SeriesInstanceUID",
         "fields": [
             "collection_id", "PatientID", "StudyInstanceUID", 'SeriesInstanceUID', 'SeriesNumber', 'SeriesDescription',
-            'aws_bucket', 'gcs_bucket', 'Modality', 'BodyPartExamined', 'access', 'crdc_series_uuid', 'instance_size'
+            'aws_bucket', 'gcs_bucket', 'Modality', 'BodyPartExamined', 'access', 'crdc_series_uuid', 'instance_size', 'source_DOI'
         ],
         "facets": {
             "per_id": {
