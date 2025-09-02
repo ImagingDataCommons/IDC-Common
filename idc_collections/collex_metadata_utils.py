@@ -1100,6 +1100,11 @@ def create_query_set(solr_query, sources, source, all_ui_attrs, image_source, Da
                         query_set.append(solr_query['queries'][attr])
                     else:
                         attStr = solr_query['queries'][attr].replace('"', '\\"')
+                        # certain attributes values include quotes, ie Manufacturer = \"GE Healthcare\" which leads to 'subqueries'
+                        # in filter strings with nested quotes, ie,
+                        # _query_:"{!join to=StudyInstanceUID from=StudyInstanceUID}(+Manufacturer:(""GE Healthcare""))"))
+                        # in this case extra backslashes are needed around the inner quotes
+                        attStr = attStr.replace('\\\\"', '\\\\\\"')
                         attStr = '(_query_:"{!join to=' + default_join_field + ' from=' + default_join_field + '}' + attStr + '")'
                         query_set.append(attStr)
                 # If it's in another source for this program, we need to join on that source
@@ -1274,7 +1279,7 @@ table_formats = {
         "parentid": "PatientID",
         "id": "StudyInstanceUID",
         "fields": ["collection_id", "PatientID", "StudyInstanceUID", 'StudyDescription', 'Modality', 'StudyDate',
-                   'access', 'crdc_series_uuid', 'gcs_bucket', 'aws_bucket'],
+                   'access', 'crdc_series_uuid', 'gcs_bucket', 'aws_bucket', 'instance_size', 'source_DOI'],
         "facetfields": {
             "SeriesInstanceUID": "unique_series"
         },
@@ -1308,7 +1313,7 @@ table_formats = {
         "id": "SeriesInstanceUID",
         "fields": [
             "collection_id", "PatientID", "StudyInstanceUID", 'SeriesInstanceUID', 'SeriesNumber', 'SeriesDescription',
-            'aws_bucket', 'gcs_bucket', 'Modality', 'BodyPartExamined', 'access', 'crdc_series_uuid', 'SOPInstanceUID'
+            'aws_bucket', 'gcs_bucket', 'Modality', 'BodyPartExamined', 'access', 'crdc_series_uuid', 'instance_size', 'source_DOI'
         ],
         "facets": {
             "per_id": {
@@ -1700,8 +1705,12 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters, 
         with_filter = False
     if (cart_query_str_all is not None) and (len(cart_query_str_all) > 0):
         with_cart = True
+
+    # ok this condition assumes every collection_id sent is valid. Correct for normal workflow from webapp
     if (tabletype == "collections"):
         sorted_ids = current_filters["collection_id"]
+        #also needed
+        num_found=len(sorted_ids)
     elif ("facetfields" in table_data) and (sortarg in table_data["facetfields"]):
         # when sorting by a 'facet' field (# of cases, # of studies etc.), we need to find the set of ids selected from
         # this field by the limit, offset params in a preliminary solr call, then add that set as a filter to limit the
@@ -2286,7 +2295,7 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
             solr_query = build_solr_query(
                 copy.deepcopy(filtergrp),
                 with_tags_for_ex=False,
-                search_child_records_by=None
+                search_child_records_by=None, solr_default_op='AND'
             )
             query_set_for_filt = create_query_set(solr_query, aux_sources, image_source, all_ui_attrs, image_source,
                                                   DataSetType, default_join_field='StudyInstanceUID')
