@@ -285,6 +285,26 @@ class CollectionQuerySet(models.QuerySet):
             tips[collex.collection_id] = collex.description
         return tips
 
+    def get_citations(self):
+        cites = []
+        collections = self.all()
+        for collex in collections:
+            cites.extend(collex.doi.split(" "))
+        cites = list(set(cites))
+        cite_text = Citation.objects.filter(doi__in=cites)
+        return {x.doi: x.cite for x in cite_text}
+
+    def get_with_citations(self):
+        cites = []
+        collections = self.all()
+        for collex in collections:
+            cites.extend(collex.doi.split(" "))
+        cites = list(set(cites))
+        cite_objs = Citation.objects.filter(doi__in=cites)
+        for collex in collections:
+            collex.citations = [x.cite for x in cite_objs.filter(doi__in=collex.doi.split(" "))]
+        return collections
+
 
 class CollectionManager(models.Manager):
     def get_queryset(self):
@@ -332,6 +352,10 @@ class Collection(models.Model):
     data_versions = models.ManyToManyField(DataVersion)
     # We make this many to many in case a collection is part of one program, though it may not be
     program = models.ForeignKey(Program, on_delete=models.CASCADE, null=True)
+
+    def get_citations(self):
+        cite_text = Citation.objects.filter(doi__in=self.doi.split(" "))
+        return {x.doi: x.cite for x in cite_text}
 
     def get_programs(self):
         return self.program
@@ -830,6 +854,12 @@ class Attribute_Ranges(models.Model):
 
     def __str__(self):
         return "{}: {} to {} by {}".format(self.attribute.name, str(self.first), str(self.last), str(self.gap))
+
+
+class Citation(models.Model):
+    id = models.AutoField(primary_key=True, null=False, blank=False)
+    doi = models.CharField(max_length=1024, null=False, blank=False)
+    cite = models.TextField(null=False, blank=False)
 
 
 class User_Feature_Definitions(models.Model):
