@@ -286,7 +286,7 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
             is_origin = DataSetType.IMAGE_DATA in source_data_types[source.id]
             # If a field list wasn't provided, work from a default set
             if is_origin and not counts_only and not len(fields):
-                fields = ["SeriesInstanceUID", "StudyInstanceUID", "collection_id", "PatientID", "program_name"]
+                fields = ["SeriesInstanceUID", "StudyInstanceUID", "collection_id", "PatientID", "program_name", "source_DOI"]
                 logger.info("[STATUS] No field list provided, using default field list of: {}".format(fields))
             for dataset in data_sets:
                 if dataset.data_type in source_data_types[source.id]:
@@ -314,8 +314,12 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                                                   'missing': True,
                                                   'facet': {'unique_count': 'unique(SeriesInstanceUID)'}}
 
-        if disk_size and len(filters.keys()) > 0:
-            custom_facets['instance_size'] = 'sum(instance_size)'
+        if len(filters.keys()) > 0:
+            custom_facets['dois'] = {
+                'type': "terms", "field": "source_DOI", "limit": -1, "missing": False
+            }
+            if disk_size:
+                custom_facets['instance_size'] = 'sum(instance_size)'
 
         if len(custom_facets.keys()) <= 0:
             custom_facets = None
@@ -332,7 +336,6 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
             str((stop - start))
         ))
         filtered_attr_by_source = copy.deepcopy(attr_by_source)
-
         for which, _attr_by_source in {'filtered_facets': filtered_attr_by_source,
                                        'facets': attr_by_source}.items():
             facet_counts = source_metadata.get(which, {})
@@ -344,21 +347,23 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                 for dataset in data_sets:
                     if dataset.data_type in source_data_types[int(source.split(":")[-1])]:
                         set_name = dataset.get_set_name()
-                        if (set_name == 'origin_set') and with_stats:
-                            context['stats'] = {}
-
-                            if 'patient_per_collec' in facet_set:
-                                context['stats']['patient_per_collec'] = facet_set['patient_per_collec']
-                            else:
-                                context['stats']['patient_per_collec'] = 0
-                            if 'study_per_collec' in facet_set:
-                                context['stats']['study_per_collec'] = facet_set['study_per_collec']
-                            else:
-                                context['stats']['study_per_collec'] = 0
-                            if 'series_per_collec' in facet_set:
-                                context['stats']['series_per_collec'] = facet_set['series_per_collec']
-                            else:
-                                context['stats']['series_per_collec'] = 0
+                        if set_name == 'origin_set':
+                            if 'dois' in facet_set:
+                                context['dois'] = facet_set['dois']
+                            if with_stats:
+                                context['stats'] = {}
+                                if 'patient_per_collec' in facet_set:
+                                    context['stats']['patient_per_collec'] = facet_set['patient_per_collec']
+                                else:
+                                    context['stats']['patient_per_collec'] = 0
+                                if 'study_per_collec' in facet_set:
+                                    context['stats']['study_per_collec'] = facet_set['study_per_collec']
+                                else:
+                                    context['stats']['study_per_collec'] = 0
+                                if 'series_per_collec' in facet_set:
+                                    context['stats']['series_per_collec'] = facet_set['series_per_collec']
+                                else:
+                                    context['stats']['series_per_collec'] = 0
 
                         if dataset.data_type in data_types and set_name in attr_sets:
                             attr_display_vals = Attribute_Display_Values.objects.filter(
@@ -572,6 +577,8 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                 context['display_file_parts_count'] = attr_by_source['totals']['display_file_parts_count']
             if 'stats' in context:
                 attr_by_source['stats'] = context['stats']
+            if 'dois' in context:
+                attr_by_source['dois'] = context['dois']
             return attr_by_source
 
         return context
