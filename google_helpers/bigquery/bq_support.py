@@ -28,7 +28,7 @@ from google.cloud.bigquery.schema import SchemaField
 from google.cloud import bigquery
 from google.cloud.bigquery import QueryJob, QueryJobConfig
 from googleapiclient.errors import HttpError
-from .utils import build_bq_filter_and_params as build_bq_flt_prm, build_bq_where_clause as build_bq_clause
+from .utils import build_bq_filter_and_params as build_bq_flt_prm, build_bq_where_clause as build_bq_clause, build_bq_filter_and_params_v1
 
 logger = logging.getLogger(__name__)
 
@@ -465,28 +465,23 @@ class BigQuerySupport(BigQueryABC):
 
         return query_set
 
+    # v2 API pass through for filter and paramter builder
     @staticmethod
     def build_bq_filter_and_params(filters, comb_with='AND', param_suffix=None, with_count_toggle=False,
-                               field_prefix=None, type_schema=None, case_insens=True):
+                               field_prefix=None, type_schema=None, case_insens=True, continuous_numerics=None):
 
         return build_bq_flt_prm(filters, comb_with, param_suffix, with_count_toggle, field_prefix, type_schema,
-                                case_insens)
+                                case_insens, continuous_numerics)
 
-    # Builds a BQ WHERE clause from a set of filters of the form:
-    # {
-    #     'field_name': [<value>,...]
-    # }
-    # Breaks out '<ATTR> IS NULL'
-    # 2+ values are converted to IN (<value>,...)
-    # Filters must already be pre-bucketed or formatted
-    # Use of LIKE is detected based on single-length value array and use of % in the value string
-    # Support special 'mutation' filter category
-    # Support for Greater/Less than (or equal to) via [gl]t[e]{0,1} in attr name,
-    #     eg. {"age_at_diagnosis_gte": [50,]}
-    # Support for BETWEEN via _btw in attr name, eg. ("wbc_at_diagnosis_btw": [800,1200]}
-    # Support for providing an explicit schema of the fields being searched
-    #
-    # TODO: add support for DATETIME eg 6/10/2010
+    # v1 API pass through for filter and paramter builder
+    @staticmethod
+    def build_bq_filter_and_params_(filters, comb_with='AND', param_suffix=None, with_count_toggle=False,
+                               field_prefix=None, type_schema=None, case_insens=True, continuous_numerics=None):
+        
+        return build_bq_filter_and_params_v1(filters, comb_with, param_suffix, with_count_toggle, field_prefix, type_schema,
+                                case_insens, continuous_numerics)
+
+    # pass through for where-clause builder
     @staticmethod
     def build_bq_where_clause(filters, join_with_space=False, comb_with='AND', field_prefix=None,
                               type_schema=None, encapsulated=True, continuous_numerics=None, case_insens=True,

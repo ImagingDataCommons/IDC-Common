@@ -30,7 +30,7 @@ from idc_collections.models import Collection, Attribute_Tooltips, DataSource, A
 from solr_helpers import query_solr_and_format_result, query_solr, build_solr_stats, build_solr_facets, build_solr_query
 from google_helpers.bigquery.bq_support import BigQuerySupport
 from google_helpers.bigquery.export_support import BigQueryExportFileList
-from google_helpers.bigquery.utils import build_bq_filter_and_params as build_bq_filter_and_params_
+from google_helpers.bigquery.utils import build_bq_filter_and_params as build_bq_filter_and_params_v2, build_bq_filter_and_params_v1
 import hashlib
 from django.conf import settings
 from django.shortcuts import render, redirect
@@ -2972,7 +2972,7 @@ def get_bq_metadata(filters, fields, data_version, sources_and_attrs=None, group
 
     ranged_numerics = Attribute.get_ranged_attrs()
 
-    build_bq_flt_and_params = build_bq_filter_and_params_ if with_v2_api else BigQuerySupport.build_bq_filter_and_params
+    build_bq_flt_and_params = build_bq_filter_and_params_v2 if with_v2_api else build_bq_filter_and_params_v1
 
     filter_attr_by_bq = {}
     field_attr_by_bq = {}
