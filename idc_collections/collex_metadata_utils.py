@@ -2087,7 +2087,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters, 
 
 
 def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries, results_lvl='StudyInstanceUID',
-                           with_records=True, debug=False):
+                           with_records=True, debug=False, dois_only=False):
     aggregate_level = "StudyInstanceUID"
     versions = ImagingDataCommonsVersion.objects.filter(
         active=True
@@ -2118,6 +2118,8 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
         aux_sources, {'for_ui': True, 'for_faceting': False, 'active_only': True},
         cache_as="all_ui_attr" if not sources.contains_inactive_versions() else None)
 
+    limit = limit if with_records else 0
+
     query_list = []
     for filtergrp in filtergrp_list:
         query_set_for_filt = []
@@ -2137,8 +2139,12 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
     sortStr = "collection_id asc, PatientID asc, StudyInstanceUID asc" if with_records else None
     totals = ['SeriesInstanceUID', 'StudyInstanceUID', 'PatientID', 'collection_id']
     custom_facets = {
-        'instance_size': 'sum(instance_size)'
+        'dois': {
+            'type': "terms", "field": "source_DOI", "limit": -1, "missing": False
+        }
     }
+    if not dois_only:
+        custom_facets['instance_size'] = 'sum(instance_size)'
 
     partitions_series_lvl = []
     for part in partitions:
@@ -2150,12 +2156,12 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
     serieslvl_found = False
     studyidsinseries = {}
     query_str_series_lvl = ''
-    if (len(partitions_series_lvl) > 0):
+    if len(partitions_series_lvl) > 0:
         query_str_series_lvl = create_cart_query_string([''], partitions_series_lvl, False)
-        if (len(query_str_series_lvl) > 0):
+        if len(query_str_series_lvl) > 0:
             solr_result_series_lvl = query_solr(
                 collection=image_source_series.name, fields=field_list, query_string=None, fqs=[query_str_series_lvl],
-                limit=int(mxseries), facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
+                limit=int(mxseries) if with_records else 0, facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
                 uniques=None, with_cursor=None, stats=None, totals=totals, op='AND'
             )
             if with_records and ('response' in solr_result_series_lvl) and (
@@ -2184,8 +2190,8 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
             sort=sortStr, counts_only=False, collapse_on=None, uniques=None, with_cursor=None, stats=None,
             totals=['SeriesInstanceUID'], op='AND', limit=int(limit), offset=int(offset)
         )
-        solr_result['response']['total'] = solr_result['facets']['total_SeriesInstanceUID']
-        solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
+        solr_result['response']['total'] = solr_result['facets'].get('total_SeriesInstanceUID', None)
+        solr_result['response']['total_instance_size'] = solr_result['facets'].get('instance_size', None)
     else:
         solr_result = {}
         solr_result['response'] = {}
@@ -2256,15 +2262,19 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
                 row['SeriesInstanceUID'] = row['val']
             if ('crdcval' in row):
                 row['crdc_series_uuid'] = row['crdcval']
-
+    for doi in solr_result['facets']['dois']['buckets']:
+        if not solr_result['response'].get('dois', None):
+            solr_result['response']['dois'] = []
+        solr_result['response']['dois'].append(doi['val'])
     if debug:
         solr_result['response']['query_string'] = query_str
         solr_result['response']['query_string_series_lvl'] = query_str_series_lvl
     return solr_result['response']
 
 
-def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offset):
+def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offset, with_records=True, dois_only=False):
     aggregate_level = "SeriesInstanceUID"
+    limit = limit if with_records else 0
 
     versions = ImagingDataCommonsVersion.objects.filter(
         active=True
@@ -2291,8 +2301,12 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
         cache_as="all_ui_attr" if not sources.contains_inactive_versions() else None)
 
     custom_facets = {
-        'instance_size': 'sum(instance_size)'
+        'dois': {
+            'type': "terms", "field": "source_DOI", "limit": -1, "missing": False
+        }
     }
+    if not dois_only:
+        custom_facets['instance_size'] = 'sum(instance_size)',
 
     query_list = []
 
@@ -2315,9 +2329,14 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
                              facets=custom_facets, sort=None, counts_only=False, collapse_on='SeriesInstanceUID',
                              offset=offset, limit=limit, uniques=None,
                              with_cursor=None, stats=None, totals=['SeriesInstanceUID'], op='AND')
-
     solr_result['response']['total'] = solr_result['facets']['total_SeriesInstanceUID']
-    solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
+    if not dois_only:
+        solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
+    for doi in solr_result['facets']['dois']['buckets']:
+        if not solr_result['response'].get('dois', None):
+            solr_result['response']['dois'] = []
+        solr_result['response']['dois'].append(doi['val'])
+
     return solr_result['response']
 
 
