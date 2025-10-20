@@ -677,7 +677,7 @@ def parse_partition_to_filter(cart_partition):
 def submit_manifest_job(
         data_version, filters, storage_loc, manifest_type, instructions, fields, from_cart=False,
         cart_partition=None, filtergrp_list=None, filename=None
-):
+    ):
     cart_filters = parse_partition_to_filter(cart_partition) if cart_partition else None
     child_records = None if cart_filters else "StudyInstanceUID"
     publisher = pubsub_v1.PublisherClient()
@@ -1397,8 +1397,8 @@ cart_facets = {
             "filter": ""
         }
     }
-
 }
+
 cart_facets_serieslvl = {
     "series_in_cart": {
         "type": "terms",
