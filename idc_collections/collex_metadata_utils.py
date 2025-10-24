@@ -92,9 +92,9 @@ def convert_disk_size(size):
     size_val = ['', 'K', 'M', 'G', 'T', 'P']
     init_size = size
     val_count = 0
-    while init_size > 1024:
+    while init_size > 1000:
         val_count += 1
-        init_size = init_size / 1024
+        init_size = init_size / 1000
 
     init_size = round(init_size, 2)
     return "{} {}B".format(init_size, size_val[val_count])
@@ -533,14 +533,18 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                 }
             if collection.collection_id in context['collections']:
                 name = collection.program.short_name if collection.program else collection.name
-                programSet[name]['projects'][collection.collection_id] = {
-                    'val': context['collections'][collection.collection_id]['count'],
+                this_collex = context['collections'][collection.collection_id]
+                prog_collex = {
+                    'val': this_collex['count'],
                     'display': collexDisplayVals[collection.collection_id]
                 }
-                if 'access' in context['collections'][collection.collection_id]:
-                    programSet[name]['projects'][collection.collection_id]['access'] = \
-                    context['collections'][collection.collection_id]['access']
-                programSet[name]['val'] += context['collections'][collection.collection_id]['count']
+                if 'access' in this_collex:
+                    prog_collex['access'] = \
+                    this_collex['access']
+                programSet[name]['val'] += this_collex['count']
+                prog_collex['total_size'] = collection.total_size
+                this_collex['total_size'] = collection.total_size
+                programSet[name]['projects'][collection.collection_id] = prog_collex
 
         if with_related:
             context['tcga_collections'] = Program.objects.get(short_name="TCGA").collection_set.all()
