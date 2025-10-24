@@ -99,7 +99,9 @@ def convert(data):
         return data
 
 
-def check_manifest_ready(request, file_name):
+def check_manifest_ready(request, file_name=None):
+    if not file_name:
+        return JsonResponse({"manifest_ready": False, "message": "invalid request"},status=400)
     # WJRL 4/25/25: use default app credentials:
     client = storage.Client()
     ##client = storage.Client.from_service_account_json(settings.GOOGLE_APPLICATION_CREDENTIALS)
@@ -109,7 +111,9 @@ def check_manifest_ready(request, file_name):
     return JsonResponse({"manifest_ready": blob.exists()}, status=200)
 
 
-def fetch_user_manifest(request, file_name):
+def fetch_user_manifest(request, file_name=None):
+    if not file_name:
+        return JsonResponse({"message": "invalid request"},status=400)
     # WJRL 4/25/25: use default app credentials:
     client = storage.Client()
     ##client = storage.Client.from_service_account_json(settings.GOOGLE_APPLICATION_CREDENTIALS)

@@ -337,6 +337,7 @@ class Collection(models.Model):
     image_types = models.CharField(max_length=255, null=True, blank=False)
     cancer_type = models.CharField(max_length=512, null=True, blank=False)
     doi = models.CharField(max_length=255, null=True, blank=False)
+    total_size = models.FloatField(null=False, blank=False, default=0.0)
     source_url = models.CharField(max_length=512, null=True, blank=False)
     supporting_data = models.CharField(max_length=255, null=True, blank=False)
     analysis_artifacts = models.CharField(max_length=255, null=True, blank=False)
