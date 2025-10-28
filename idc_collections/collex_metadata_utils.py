@@ -2310,7 +2310,7 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
         }
     }
     if not dois_only:
-        custom_facets['instance_size'] = 'sum(instance_size)',
+        custom_facets['instance_size'] = 'sum(instance_size)'
 
     query_list = []
 
