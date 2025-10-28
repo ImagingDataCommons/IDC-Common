@@ -2332,8 +2332,10 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
     solr_result = query_solr(collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str],
                              facets=custom_facets, sort=None, counts_only=False, collapse_on='SeriesInstanceUID',
                              offset=offset, limit=limit, uniques=None,
-                             with_cursor=None, stats=None, totals=['SeriesInstanceUID'], op='AND')
+                             with_cursor=None, stats=None, totals=['SeriesInstanceUID', 'collection_id', 'PatientID', 'StudyInstanceUID'], op='AND')
     solr_result['response']['total'] = solr_result['facets']['total_SeriesInstanceUID']
+    solr_result['response']['facets'] = solr_result['facets']
+
     if not dois_only:
         solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
     for doi in solr_result['facets']['dois']['buckets']:
@@ -2504,10 +2506,9 @@ def create_cart_sql(partitions, filtergrp_lst, storage_loc, lvl="series"):
 
 def cart_manifest(filtergrp_list, partitions, mxstudies, field_list, MAX_FILE_LIST_ENTRIES):
     manifest = {}
-    manifest['docs'] = []
-
     solr_result = get_cart_data_serieslvl(filtergrp_list, partitions, field_list, MAX_FILE_LIST_ENTRIES, 0)
     manifest['docs'] = solr_result['docs']
+    manifest['facets'] = solr_result['facets']
 
     if 'total_SeriesInstanceUID' in solr_result:
         manifest['total'] = solr_result['total_SeriesInstanceUID']
