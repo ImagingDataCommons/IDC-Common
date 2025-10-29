@@ -2316,7 +2316,7 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
 
     for filtergrp in filtergrp_list:
         query_set_for_filt = []
-        if (len(filtergrp) > 0):
+        if len(filtergrp) > 0:
             solr_query = build_solr_query(
                 copy.deepcopy(filtergrp),
                 with_tags_for_ex=False,
