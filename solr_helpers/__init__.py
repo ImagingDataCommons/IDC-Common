@@ -389,7 +389,7 @@ def build_solr_facets(attrs, filter_tags=None, include_nulls=True, unique=None, 
 # subq_join_field: If inverted filters are present, subq_join_field determines the field used to {!join} the inverted
 # subquery to the main query
 #
-# search_child_records_by: a dict indicating what field, if any, should be used in subquerying 'child' or related records.
+# search_child_records_by: a dict indicating what field, if any, should be used in subquerying 'child' or related records for each filter attribute
 # This allows for searching on 'related records' which are being filtered out based on lack of a filter value, but which
 # satisfy another criteria - eg., records from the same study may not all have the same fields pulled out, but you may
 # still want those records when filtering on this attribute.

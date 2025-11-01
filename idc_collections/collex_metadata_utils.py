@@ -544,6 +544,8 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                 programSet[name]['val'] += this_collex['count']
                 prog_collex['total_size'] = collection.total_size
                 this_collex['total_size'] = collection.total_size
+                prog_collex['total_size_with_ar'] = collection.total_size_with_ar
+                this_collex['total_size_with_ar'] = collection.total_size_with_ar
                 programSet[name]['projects'][collection.collection_id] = prog_collex
 
         if with_related:
@@ -2091,7 +2093,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters, 
 
 
 def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries, results_lvl='StudyInstanceUID',
-                           with_records=True, debug=False, dois_only=False):
+                           with_records=True, debug=False, dois_only=False, size_only=False):
     aggregate_level = "StudyInstanceUID"
     versions = ImagingDataCommonsVersion.objects.filter(
         active=True
@@ -2270,13 +2272,16 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
         if not solr_result['response'].get('dois', None):
             solr_result['response']['dois'] = []
         solr_result['response']['dois'].append(doi['val'])
+    if size_only:
+        solr_result['response']['total_size'] = solr_result['facets']['instance_size']
     if debug:
         solr_result['response']['query_string'] = query_str
         solr_result['response']['query_string_series_lvl'] = query_str_series_lvl
+
     return solr_result['response']
 
 
-def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offset, with_records=True, dois_only=False):
+def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offset, with_records=True, dois_only=False, size_only=False):
     aggregate_level = "SeriesInstanceUID"
     limit = limit if with_records else 0
 
@@ -2338,6 +2343,8 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
 
     if not dois_only:
         solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
+    if size_only:
+        solr_result['response']['total_size'] = solr_result['facets']['instance_size']
     for doi in solr_result['facets']['dois']['buckets']:
         if not solr_result['response'].get('dois', None):
             solr_result['response']['dois'] = []
