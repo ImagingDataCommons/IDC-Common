@@ -92,9 +92,9 @@ def convert_disk_size(size):
     size_val = ['', 'K', 'M', 'G', 'T', 'P']
     init_size = size
     val_count = 0
-    while init_size > 1024:
+    while init_size > 1000:
         val_count += 1
-        init_size = init_size / 1024
+        init_size = init_size / 1000
 
     init_size = round(init_size, 2)
     return "{} {}B".format(init_size, size_val[val_count])
@@ -533,14 +533,20 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                 }
             if collection.collection_id in context['collections']:
                 name = collection.program.short_name if collection.program else collection.name
-                programSet[name]['projects'][collection.collection_id] = {
-                    'val': context['collections'][collection.collection_id]['count'],
+                this_collex = context['collections'][collection.collection_id]
+                prog_collex = {
+                    'val': this_collex['count'],
                     'display': collexDisplayVals[collection.collection_id]
                 }
-                if 'access' in context['collections'][collection.collection_id]:
-                    programSet[name]['projects'][collection.collection_id]['access'] = \
-                    context['collections'][collection.collection_id]['access']
-                programSet[name]['val'] += context['collections'][collection.collection_id]['count']
+                if 'access' in this_collex:
+                    prog_collex['access'] = \
+                    this_collex['access']
+                programSet[name]['val'] += this_collex['count']
+                prog_collex['total_size'] = collection.total_size
+                this_collex['total_size'] = collection.total_size
+                prog_collex['total_size_with_ar'] = collection.total_size_with_ar
+                this_collex['total_size_with_ar'] = collection.total_size_with_ar
+                programSet[name]['projects'][collection.collection_id] = prog_collex
 
         if with_related:
             context['tcga_collections'] = Program.objects.get(short_name="TCGA").collection_set.all()
@@ -677,7 +683,7 @@ def parse_partition_to_filter(cart_partition):
 def submit_manifest_job(
         data_version, filters, storage_loc, manifest_type, instructions, fields, from_cart=False,
         cart_partition=None, filtergrp_list=None, filename=None
-):
+    ):
     cart_filters = parse_partition_to_filter(cart_partition) if cart_partition else None
     child_records = None if cart_filters else "StudyInstanceUID"
     publisher = pubsub_v1.PublisherClient()
@@ -1397,8 +1403,8 @@ cart_facets = {
             "filter": ""
         }
     }
-
 }
+
 cart_facets_serieslvl = {
     "series_in_cart": {
         "type": "terms",
@@ -2087,7 +2093,7 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters, 
 
 
 def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries, results_lvl='StudyInstanceUID',
-                           with_records=True, debug=False):
+                           with_records=True, debug=False, dois_only=False, size_only=False):
     aggregate_level = "StudyInstanceUID"
     versions = ImagingDataCommonsVersion.objects.filter(
         active=True
@@ -2118,6 +2124,8 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
         aux_sources, {'for_ui': True, 'for_faceting': False, 'active_only': True},
         cache_as="all_ui_attr" if not sources.contains_inactive_versions() else None)
 
+    limit = limit if with_records else 0
+
     query_list = []
     for filtergrp in filtergrp_list:
         query_set_for_filt = []
@@ -2137,8 +2145,12 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
     sortStr = "collection_id asc, PatientID asc, StudyInstanceUID asc" if with_records else None
     totals = ['SeriesInstanceUID', 'StudyInstanceUID', 'PatientID', 'collection_id']
     custom_facets = {
-        'instance_size': 'sum(instance_size)'
+        'dois': {
+            'type': "terms", "field": "source_DOI", "limit": -1, "missing": False
+        }
     }
+    if not dois_only:
+        custom_facets['instance_size'] = 'sum(instance_size)'
 
     partitions_series_lvl = []
     for part in partitions:
@@ -2150,12 +2162,12 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
     serieslvl_found = False
     studyidsinseries = {}
     query_str_series_lvl = ''
-    if (len(partitions_series_lvl) > 0):
+    if len(partitions_series_lvl) > 0:
         query_str_series_lvl = create_cart_query_string([''], partitions_series_lvl, False)
-        if (len(query_str_series_lvl) > 0):
+        if len(query_str_series_lvl) > 0:
             solr_result_series_lvl = query_solr(
                 collection=image_source_series.name, fields=field_list, query_string=None, fqs=[query_str_series_lvl],
-                limit=int(mxseries), facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
+                limit=int(mxseries) if with_records else 0, facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
                 uniques=None, with_cursor=None, stats=None, totals=totals, op='AND'
             )
             if with_records and ('response' in solr_result_series_lvl) and (
@@ -2184,8 +2196,8 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
             sort=sortStr, counts_only=False, collapse_on=None, uniques=None, with_cursor=None, stats=None,
             totals=['SeriesInstanceUID'], op='AND', limit=int(limit), offset=int(offset)
         )
-        solr_result['response']['total'] = solr_result['facets']['total_SeriesInstanceUID']
-        solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
+        solr_result['response']['total'] = solr_result['facets'].get('total_SeriesInstanceUID', None)
+        solr_result['response']['total_instance_size'] = solr_result['facets'].get('instance_size', None)
     else:
         solr_result = {}
         solr_result['response'] = {}
@@ -2256,15 +2268,22 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
                 row['SeriesInstanceUID'] = row['val']
             if ('crdcval' in row):
                 row['crdc_series_uuid'] = row['crdcval']
-
+    for doi in solr_result['facets']['dois']['buckets']:
+        if not solr_result['response'].get('dois', None):
+            solr_result['response']['dois'] = []
+        solr_result['response']['dois'].append(doi['val'])
+    if size_only:
+        solr_result['response']['total_size'] = solr_result['facets']['instance_size']
     if debug:
         solr_result['response']['query_string'] = query_str
         solr_result['response']['query_string_series_lvl'] = query_str_series_lvl
+
     return solr_result['response']
 
 
-def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offset):
+def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offset, with_records=True, dois_only=False, size_only=False):
     aggregate_level = "SeriesInstanceUID"
+    limit = limit if with_records else 0
 
     versions = ImagingDataCommonsVersion.objects.filter(
         active=True
@@ -2291,14 +2310,18 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
         cache_as="all_ui_attr" if not sources.contains_inactive_versions() else None)
 
     custom_facets = {
-        'instance_size': 'sum(instance_size)'
+        'dois': {
+            'type': "terms", "field": "source_DOI", "limit": -1, "missing": False
+        }
     }
+    if not dois_only:
+        custom_facets['instance_size'] = 'sum(instance_size)'
 
     query_list = []
 
     for filtergrp in filtergrp_list:
         query_set_for_filt = []
-        if (len(filtergrp) > 0):
+        if len(filtergrp) > 0:
             solr_query = build_solr_query(
                 copy.deepcopy(filtergrp),
                 with_tags_for_ex=False,
@@ -2314,10 +2337,19 @@ def get_cart_data_serieslvl(filtergrp_list, partitions, field_list, limit, offse
     solr_result = query_solr(collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str],
                              facets=custom_facets, sort=None, counts_only=False, collapse_on='SeriesInstanceUID',
                              offset=offset, limit=limit, uniques=None,
-                             with_cursor=None, stats=None, totals=['SeriesInstanceUID'], op='AND')
-
+                             with_cursor=None, stats=None, totals=['SeriesInstanceUID', 'collection_id', 'PatientID', 'StudyInstanceUID'], op='AND')
     solr_result['response']['total'] = solr_result['facets']['total_SeriesInstanceUID']
-    solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
+    solr_result['response']['facets'] = solr_result['facets']
+
+    if not dois_only:
+        solr_result['response']['total_instance_size'] = solr_result['facets']['instance_size']
+    if size_only:
+        solr_result['response']['total_size'] = solr_result['facets']['instance_size']
+    for doi in solr_result['facets']['dois']['buckets']:
+        if not solr_result['response'].get('dois', None):
+            solr_result['response']['dois'] = []
+        solr_result['response']['dois'].append(doi['val'])
+
     return solr_result['response']
 
 
@@ -2481,10 +2513,9 @@ def create_cart_sql(partitions, filtergrp_lst, storage_loc, lvl="series"):
 
 def cart_manifest(filtergrp_list, partitions, mxstudies, field_list, MAX_FILE_LIST_ENTRIES):
     manifest = {}
-    manifest['docs'] = []
-
     solr_result = get_cart_data_serieslvl(filtergrp_list, partitions, field_list, MAX_FILE_LIST_ENTRIES, 0)
     manifest['docs'] = solr_result['docs']
+    manifest['facets'] = solr_result['facets']
 
     if 'total_SeriesInstanceUID' in solr_result:
         manifest['total'] = solr_result['total_SeriesInstanceUID']
