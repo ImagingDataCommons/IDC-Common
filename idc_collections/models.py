@@ -335,7 +335,7 @@ class Collection(models.Model):
     access = models.CharField(max_length=40, null=True, blank=False)
     subject_count = models.IntegerField(default=0, null=True, blank=False)
     image_types = models.CharField(max_length=255, null=True, blank=False)
-    cancer_type = models.CharField(max_length=512, null=True, blank=False)
+    cancer_type = models.TextField(null=True, blank=False)
     doi = models.CharField(max_length=255, null=True, blank=False)
     total_size = models.FloatField(null=False, blank=False, default=0.0)
     total_size_with_ar = models.FloatField(null=False, blank=False, default=0.0)

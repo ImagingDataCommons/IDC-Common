@@ -2186,7 +2186,7 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
             partitions_study_lvl.append(npart)
         else:
             studyid = npart['id'][2]
-            if studyid in studyidsinseries:
+            if studyid in studyidsinseries or dois_only or size_only:
                 npart['not'] = []
                 partitions_study_lvl.append(npart)
 
@@ -2200,10 +2200,12 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
         solr_result['response']['total'] = solr_result['facets'].get('total_SeriesInstanceUID', None)
         solr_result['response']['total_instance_size'] = solr_result['facets'].get('instance_size', None)
     else:
-        solr_result = {}
-        solr_result['response'] = {}
-        solr_result['response']['docs'] = []
-        solr_result['response']['total_instance_size'] = 0
+        solr_result = {
+            'response': {
+                'docs': [],
+                'total_instance_size': 0
+            }
+        }
 
     if with_records and serieslvl_found and (len(solr_result_series_lvl['response']['docs']) > 0):
         ind = 0
