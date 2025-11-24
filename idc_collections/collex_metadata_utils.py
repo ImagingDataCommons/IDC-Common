@@ -2095,192 +2095,205 @@ def get_table_data_with_cart_data(tabletype, sortarg, sortdir, current_filters, 
 
 def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mxseries, results_lvl='StudyInstanceUID',
                            with_records=True, debug=False, dois_only=False, size_only=False):
-    aggregate_level = "StudyInstanceUID"
-    versions = ImagingDataCommonsVersion.objects.filter(
-        active=True
-    ).get_data_versions(active=True)
-
-    data_types = [DataSetType.IMAGE_DATA, DataSetType.ANCILLARY_DATA, DataSetType.DERIVED_DATA]
-    data_sets = DataSetType.objects.filter(data_type__in=data_types)
-    aux_sources = data_sets.get_data_sources().filter(
-        source_type=DataSource.SOLR,
-        aggregate_level__in=["case_barcode", "sample_barcode", aggregate_level],
-        id__in=versions.get_data_sources().filter(source_type=DataSource.SOLR).values_list("id", flat=True)
-    ).distinct()
-
-    sources = ImagingDataCommonsVersion.objects.get(active=True).get_data_sources(
-        active=True, source_type=DataSource.SOLR,
-        aggregate_level=aggregate_level
-    )
-
-    image_source = sources.filter(id__in=DataSetType.objects.get(
-        data_type=DataSetType.IMAGE_DATA).datasource_set.all()).first()
-
-    image_source_series = ImagingDataCommonsVersion.objects.get(active=True).get_data_sources(
-        active=True, source_type=DataSource.SOLR,
-        aggregate_level="SeriesInstanceUID").filter(id__in=DataSetType.objects.get(
-        data_type=DataSetType.IMAGE_DATA).datasource_set.all()).first()
-
-    all_ui_attrs = fetch_data_source_attr(
-        aux_sources, {'for_ui': True, 'for_faceting': False, 'active_only': True},
-        cache_as="all_ui_attr" if not sources.contains_inactive_versions() else None)
-
-    limit = limit if with_records else 0
-
-    query_list = []
-    for filtergrp in filtergrp_list:
-        query_set_for_filt = []
-        if (len(filtergrp) > 0):
-            solr_query = build_solr_query(
-                copy.deepcopy(filtergrp),
-                with_tags_for_ex=False,
-                search_child_records_by=None, solr_default_op='AND'
-            )
-            query_set_for_filt = create_query_set(solr_query, aux_sources, image_source, all_ui_attrs, image_source,
-                                                  DataSetType)
-            query_set_for_filt = ['(' + filt + ')' if not filt[0] == '(' else filt for filt in query_set_for_filt]
-        query_list.append("".join(query_set_for_filt))
-
-    field_list = ['collection_id', 'PatientID', 'StudyInstanceUID', 'SeriesInstanceUID', 'Modality', 'instance_size',
-                  'crdc_series_uuid', 'aws_bucket', 'gcs_bucket'] if with_records else None
-    sortStr = "collection_id asc, PatientID asc, StudyInstanceUID asc" if with_records else None
-    totals = ['SeriesInstanceUID', 'StudyInstanceUID', 'PatientID', 'collection_id']
-    custom_facets = {
-        'dois': {
-            'type': "terms", "field": "source_DOI", "limit": -1, "missing": False
-        }
+    solr_result_series_lvl = None
+    solr_result = {
+        'response': None
     }
-    if not dois_only:
-        custom_facets['instance_size'] = 'sum(instance_size)'
 
-    partitions_series_lvl = []
-    for part in partitions:
-        if ((len(part['id']) > 3) or ((len(part['id']) == 3) and (len(part['not']) > 0))):
-            npart = copy.deepcopy(part)
-            npart['filt'] = [[0]]
-            partitions_series_lvl.append(copy.deepcopy(npart))
+    try:
+        aggregate_level = "StudyInstanceUID"
+        versions = ImagingDataCommonsVersion.objects.filter(
+            active=True
+        ).get_data_versions(active=True)
 
-    serieslvl_found = False
-    studyidsinseries = {}
-    query_str_series_lvl = ''
-    if len(partitions_series_lvl) > 0:
-        query_str_series_lvl = create_cart_query_string([''], partitions_series_lvl, False)
-        if len(query_str_series_lvl) > 0:
-            solr_result_series_lvl = query_solr(
-                collection=image_source_series.name, fields=field_list, query_string=None, fqs=[query_str_series_lvl],
-                limit=int(mxseries) if with_records else 0, facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
-                uniques=None, with_cursor=None, stats=None, totals=totals, op='AND'
-            )
-            if with_records and ('response' in solr_result_series_lvl) and (
-                    'docs' in solr_result_series_lvl['response']):
-                serieslvl_found = True
-                for row in solr_result_series_lvl['response']['docs']:
-                    studyidsinseries[row['StudyInstanceUID']] = 1
+        data_types = [DataSetType.IMAGE_DATA, DataSetType.ANCILLARY_DATA, DataSetType.DERIVED_DATA]
+        data_sets = DataSetType.objects.filter(data_type__in=data_types)
+        aux_sources = data_sets.get_data_sources().filter(
+            source_type=DataSource.SOLR,
+            aggregate_level__in=["case_barcode", "sample_barcode", aggregate_level],
+            id__in=versions.get_data_sources().filter(source_type=DataSource.SOLR).values_list("id", flat=True)
+        ).distinct()
 
-    partitions_study_lvl = []
-    for part in partitions:
-        npart = copy.deepcopy(part)
-        if len(npart['id']) < 3:
-            partitions_study_lvl.append(npart)
-        elif (len(npart['id']) == 3) and (len(npart['not']) == 0):
-            partitions_study_lvl.append(npart)
-        else:
-            studyid = npart['id'][2]
-            if studyid in studyidsinseries or dois_only or size_only:
-                npart['not'] = []
-                partitions_study_lvl.append(npart)
-
-    query_str = create_cart_query_string(query_list, partitions_study_lvl, False)
-    if len(query_str) > 0:
-        solr_result = query_solr(
-            collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str], facets=custom_facets,
-            sort=sortStr, counts_only=False, collapse_on=None, uniques=None, with_cursor=None, stats=None,
-            totals=['SeriesInstanceUID'], op='AND', limit=int(limit), offset=int(offset)
+        sources = ImagingDataCommonsVersion.objects.get(active=True).get_data_sources(
+            active=True, source_type=DataSource.SOLR,
+            aggregate_level=aggregate_level
         )
-        solr_result['response']['total'] = solr_result['facets'].get('total_SeriesInstanceUID', None)
-        solr_result['response']['total_instance_size'] = solr_result['facets'].get('instance_size', None)
-    else:
-        solr_result = {
-            'response': {
-                'docs': [],
-                'total_instance_size': 0
+
+        image_source = sources.filter(id__in=DataSetType.objects.get(
+            data_type=DataSetType.IMAGE_DATA).datasource_set.all()).first()
+
+        image_source_series = ImagingDataCommonsVersion.objects.get(active=True).get_data_sources(
+            active=True, source_type=DataSource.SOLR,
+            aggregate_level="SeriesInstanceUID").filter(id__in=DataSetType.objects.get(
+            data_type=DataSetType.IMAGE_DATA).datasource_set.all()).first()
+
+        all_ui_attrs = fetch_data_source_attr(
+            aux_sources, {'for_ui': True, 'for_faceting': False, 'active_only': True},
+            cache_as="all_ui_attr" if not sources.contains_inactive_versions() else None)
+
+        limit = limit if with_records else 0
+
+        query_list = []
+        for filtergrp in filtergrp_list:
+            query_set_for_filt = []
+            if (len(filtergrp) > 0):
+                solr_query = build_solr_query(
+                    copy.deepcopy(filtergrp),
+                    with_tags_for_ex=False,
+                    search_child_records_by=None, solr_default_op='AND'
+                )
+                query_set_for_filt = create_query_set(solr_query, aux_sources, image_source, all_ui_attrs, image_source,
+                                                      DataSetType)
+                query_set_for_filt = ['(' + filt + ')' if not filt[0] == '(' else filt for filt in query_set_for_filt]
+            query_list.append("".join(query_set_for_filt))
+
+        field_list = ['collection_id', 'PatientID', 'StudyInstanceUID', 'SeriesInstanceUID', 'Modality', 'instance_size',
+                      'crdc_series_uuid', 'aws_bucket', 'gcs_bucket'] if with_records else None
+        sortStr = "collection_id asc, PatientID asc, StudyInstanceUID asc" if with_records else None
+        totals = ['SeriesInstanceUID', 'StudyInstanceUID', 'PatientID', 'collection_id']
+        custom_facets = {
+            'dois': {
+                'type': "terms", "field": "source_DOI", "limit": -1, "missing": False
             }
         }
+        if not dois_only:
+            custom_facets['instance_size'] = 'sum(instance_size)'
 
-    if with_records and serieslvl_found and (len(solr_result_series_lvl['response']['docs']) > 0):
-        ind = 0
-        rowDic = {}
-        rowsWithSeries = []
-        # Enumerate all the Studies found in the Study-level query result
-        for i, row in enumerate(solr_result['response']['docs']):
-            rowDic[row['StudyInstanceUID']] = i
-        # Note the next index for if we need to add in studies only found in the series query result
-        ind = len(solr_result['response']['docs'])
-        for row in solr_result_series_lvl['response']['docs']:
-            studyid = row['StudyInstanceUID']
-            seriesid = row['SeriesInstanceUID']
-            if 'crdc_series_uuid' in row:
-                crdcid = row['crdc_series_uuid']
-            # Studies which are not found in the main query but present in a series are from single-series additions
-            # following a study removal
-            if studyid not in rowDic:
-                rowDic[studyid] = ind
-                ind = ind + 1
-                solr_result['response']['docs'].append(row)
-                if not isinstance(row['crdc_series_uuid'], list):
-                    row['crdc_series_uuid'] = [row['crdc_series_uuid']]
-            studyind = rowDic[studyid]
-            studyrow = solr_result['response']['docs'][studyind]
-            if not 'val' in studyrow:
-                studyrow['val'] = []
-                rowsWithSeries.append(studyind)
-            if 'series_buckets' not in studyrow:
-                studyrow['series_buckets'] = {}
-            if crdcid not in studyrow['series_buckets']:
-                studyrow['series_buckets'][crdcid] = {
-                    'aws_bucket': row['aws_bucket'][0],
-                    'gcs_bucket': row['gcs_bucket'][0],
+        partitions_series_lvl = []
+        for part in partitions:
+            if ((len(part['id']) > 3) or ((len(part['id']) == 3) and (len(part['not']) > 0))):
+                npart = copy.deepcopy(part)
+                npart['filt'] = [[0]]
+                partitions_series_lvl.append(copy.deepcopy(npart))
+
+        total_instance_size = None
+        serieslvl_found = False
+        studyidsinseries = {}
+        query_str_series_lvl = ''
+
+        if len(partitions_series_lvl) > 0:
+            query_str_series_lvl = create_cart_query_string([''], partitions_series_lvl, False)
+            if len(query_str_series_lvl) > 0:
+                solr_result_series_lvl = query_solr(
+                    collection=image_source_series.name, fields=field_list, query_string=None, fqs=[query_str_series_lvl],
+                    limit=int(mxseries) if with_records else 0, facets=custom_facets, sort=sortStr, counts_only=False, collapse_on=None,
+                    uniques=None, with_cursor=None, stats=None, totals=totals, op='AND'
+                )
+                if with_records and ('response' in solr_result_series_lvl) and (
+                        'docs' in solr_result_series_lvl['response']):
+                    serieslvl_found = True
+                    for row in solr_result_series_lvl['response']['docs']:
+                        studyidsinseries[row['StudyInstanceUID']] = 1
+                total_instance_size = solr_result_series_lvl['facets'].get('instance_size', None)
+
+        partitions_study_lvl = []
+        for part in partitions:
+            npart = copy.deepcopy(part)
+            if len(npart['id']) < 3:
+                partitions_study_lvl.append(npart)
+            elif (len(npart['id']) == 3) and (len(npart['not']) == 0):
+                partitions_study_lvl.append(npart)
+            else:
+                studyid = npart['id'][2]
+                if studyid in studyidsinseries:
+                    npart['not'] = []
+                    partitions_study_lvl.append(npart)
+
+        query_str = create_cart_query_string(query_list, partitions_study_lvl, False)
+        if len(query_str) > 0:
+            solr_result = query_solr(
+                collection=image_source.name, fields=field_list, query_string=None, fqs=[query_str], facets=custom_facets,
+                sort=sortStr, counts_only=False, collapse_on=None, uniques=None, with_cursor=None, stats=None,
+                totals=['SeriesInstanceUID'], op='AND', limit=int(limit), offset=int(offset)
+            )
+            solr_result['response']['total'] = solr_result['facets'].get('total_SeriesInstanceUID', None)
+            solr_result['response']['total_instance_size'] = solr_result['facets'].get('instance_size', None)
+        else:
+            solr_result = {
+                'response': {
+                    'docs': [],
+                    'total_instance_size': total_instance_size
                 }
-            if not ('crdcval' in studyrow) and ('crdc_series_uuid' in row):
-                studyrow['crdcval'] = []
-            if not ('seriestotsize' in studyrow):
-                studyrow['seriestotsize'] = []
-            studyrow['val'].append(seriesid)
-            if ('crdc_series_uuid' in row):
-                studyrow['crdcval'].append(crdcid)
-            if ('instance_size' in row):
-                studyrow['seriestotsize'] = studyrow['seriestotsize'] + row['instance_size']
+            }
 
-        for idx in rowsWithSeries:
-            solr_result['response']['docs'][idx]['val'].sort()
+        if with_records and serieslvl_found and (len(solr_result_series_lvl['response']['docs']) > 0):
+            ind = 0
+            rowDic = {}
+            rowsWithSeries = []
+            # Enumerate all the Studies found in the Study-level query result
+            for i, row in enumerate(solr_result['response']['docs']):
+                rowDic[row['StudyInstanceUID']] = i
+            # Note the next index for if we need to add in studies only found in the series query result
+            ind = len(solr_result['response']['docs'])
+            for row in solr_result_series_lvl['response']['docs']:
+                studyid = row['StudyInstanceUID']
+                seriesid = row['SeriesInstanceUID']
+                if 'crdc_series_uuid' in row:
+                    crdcid = row['crdc_series_uuid']
+                # Studies which are not found in the main query but present in a series are from single-series additions
+                # following a study removal
+                if studyid not in rowDic:
+                    rowDic[studyid] = ind
+                    ind = ind + 1
+                    solr_result['response']['docs'].append(row)
+                    if not isinstance(row['crdc_series_uuid'], list):
+                        row['crdc_series_uuid'] = [row['crdc_series_uuid']]
+                studyind = rowDic[studyid]
+                studyrow = solr_result['response']['docs'][studyind]
+                if not 'val' in studyrow:
+                    studyrow['val'] = []
+                    rowsWithSeries.append(studyind)
+                if 'series_buckets' not in studyrow:
+                    studyrow['series_buckets'] = {}
+                if crdcid not in studyrow['series_buckets']:
+                    studyrow['series_buckets'][crdcid] = {
+                        'aws_bucket': row['aws_bucket'][0],
+                        'gcs_bucket': row['gcs_bucket'][0],
+                    }
+                if not ('crdcval' in studyrow) and ('crdc_series_uuid' in row):
+                    studyrow['crdcval'] = []
+                if not ('seriestotsize' in studyrow):
+                    studyrow['seriestotsize'] = []
+                studyrow['val'].append(seriesid)
+                if ('crdc_series_uuid' in row):
+                    studyrow['crdcval'].append(crdcid)
+                if ('instance_size' in row):
+                    studyrow['seriestotsize'] = studyrow['seriestotsize'] + row['instance_size']
 
-    for row in solr_result['response']['docs']:
-        row['cnt'] = len(row['SeriesInstanceUID'])
-        if 'val' in row:
-            row['selcnt'] = len(row['val'])
-            solr_result['response']['total'] = solr_result['response']['total'] - row['cnt'] + row['selcnt']
-        else:
-            row['selcnt'] = row['cnt']
-        if 'seriestotsize' in row:
-            solr_result['response']['total_instance_size'] = solr_result['response']['total_instance_size'] - sum(
-                row['instance_size']) + sum(row['seriestotsize'])
-        if results_lvl == 'StudyInstanceUID':
-            del (row['SeriesInstanceUID'])
-        else:
-            if ('val' in row):
-                row['SeriesInstanceUID'] = row['val']
-            if ('crdcval' in row):
-                row['crdc_series_uuid'] = row['crdcval']
-    for doi in solr_result['facets']['dois']['buckets']:
-        if not solr_result['response'].get('dois', None):
-            solr_result['response']['dois'] = []
-        solr_result['response']['dois'].append(doi['val'])
-    if size_only:
-        solr_result['response']['total_size'] = solr_result['facets']['instance_size']
-    if debug:
-        solr_result['response']['query_string'] = query_str
-        solr_result['response']['query_string_series_lvl'] = query_str_series_lvl
+            for idx in rowsWithSeries:
+                solr_result['response']['docs'][idx]['val'].sort()
 
+        for row in solr_result['response']['docs']:
+            row['cnt'] = len(row['SeriesInstanceUID'])
+            if 'val' in row:
+                row['selcnt'] = len(row['val'])
+                solr_result['response']['total'] = solr_result['response']['total'] - row['cnt'] + row['selcnt']
+            else:
+                row['selcnt'] = row['cnt']
+            if 'seriestotsize' in row:
+                solr_result['response']['total_instance_size'] = solr_result['response']['total_instance_size'] - sum(
+                    row['instance_size']) + sum(row['seriestotsize'])
+            if results_lvl == 'StudyInstanceUID':
+                del (row['SeriesInstanceUID'])
+            else:
+                if ('val' in row):
+                    row['SeriesInstanceUID'] = row['val']
+                if ('crdcval' in row):
+                    row['crdc_series_uuid'] = row['crdcval']
+        doi_result = solr_result_series_lvl or solr_result
+        for doi in doi_result['facets']['dois']['buckets']:
+            if not solr_result['response'].get('dois', None):
+                solr_result['response']['dois'] = []
+            solr_result['response']['dois'].append(doi['val'])
+        if size_only:
+            solr_result['response']['total_size'] = solr_result['response']['total_instance_size']
+        if debug:
+            solr_result['response']['query_string'] = query_str
+            solr_result['response']['query_string_series_lvl'] = query_str_series_lvl
+
+    except Exception as e:
+        logger.error("[ERROR] While fetching cart data:")
+        logger.exception(e)
     return solr_result['response']
 
 
