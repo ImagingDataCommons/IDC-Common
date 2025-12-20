@@ -93,13 +93,10 @@ def collection_details(request, collection_id):
             'citations': collex.get_citations(),
             'primary_tumor_location': collex.location,
             'license': collex.license.split(";"),
-            'collection_type': "Collection" if collex.collection_type == Collection.ORIGINAL_COLLEX else "Analysis Result"
+            'collection_type': "Collection" if collex.collection_type == Collection.ORIGINAL_COLLEX else "Analysis Result",
+             'collections': collex.collections.split(", ") if collex.collection_type == Collection.ANALYSIS_COLLEX else "",
+            'analysis_artifacts': collex.analysis_artifacts
         }
-        if collex.collection_type == Collection.ANALYSIS_COLLEX:
-            context.update({
-                'collections': collex.collections,
-                'analysis_artifacts': collex.analysis_artifacts,
-            })
 
         return render(request, template, context)
     except ObjectDoesNotExist:
