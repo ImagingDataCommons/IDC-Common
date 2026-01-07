@@ -188,7 +188,7 @@ def build_bq_filter_and_params(filters, comb_with='AND', param_suffix=None, with
 
         if 'None' in values:
             values.remove('None')
-            filter_string = "{}{} IS NULL".format('' if not field_prefix else field_prefix, attr)
+            filter_string = "{}{} IS NULL".format('' if not field_prefix else field_prefix, attr_name)
 
         if len(values) > 0:
             if len(filter_string):
@@ -196,19 +196,19 @@ def build_bq_filter_and_params(filters, comb_with='AND', param_suffix=None, with
             if len(values) == 1 and not is_btw:
                 # Single scalar param
                 query_param.value = values[0]
+                operator = None
                 if query_param.type_ == 'STRING':
-                    filter_string += "{}{} = @{}".format('' if not field_prefix else field_prefix, attr,
-                                                         param_name)
+                    operator = '=' if not re.search(r'%',query_param.value) else 'LIKE'
                 elif query_param.type_ == 'NUMERIC':
                     operator = "{}{}".format(
                         ">" if re.search(r'_gte?', attr) else "<" if re.search(r'_lte?', attr) else "",
                         '=' if re.search(r'_[lg]te', attr) or not re.search(r'_[lg]', attr) or attr.endswith(
                             '_eq') else ''
                     )
-                    filter_string += "{}{} {} @{}".format(
-                        '' if not field_prefix else field_prefix, attr_name,
-                        operator, param_name
-                    )
+                filter_string += "{}{} {} @{}".format(
+                    '' if not field_prefix else field_prefix, attr_name,
+                    operator, param_name
+                )
             # Occasionally attributes may come in without the appropriate _e?btwe? suffix; we account for that here
             # by checking for the proper attr_name in the optional continuous_numerics list
             elif is_btw or attr_name in continuous_numerics:
