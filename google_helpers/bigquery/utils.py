@@ -700,8 +700,9 @@ def build_bq_filter_and_params_v1(filters, comb_with='AND', param_suffix=None, w
                 # Single scalar param
                 query_param['parameterValue']['value'] = values[0]
                 if query_param['parameterType']['type'] == 'STRING':
-                    filter_string += "LOWER({}{}) = LOWER(@{})".format('' if not field_prefix else field_prefix, attr,
-                                                         param_name)
+                    operator = "=" if not re.search(r'%',values[0]) else "LIKE"
+                    filter_string += "LOWER({}{}) {} LOWER(@{})".format('' if not field_prefix else field_prefix, attr,
+                                                         operator, param_name)
                 elif query_param['parameterType']['type'] == 'NUMERIC':
                     operator = "{}{}".format(
                         ">" if re.search(r'_gte?', attr) else "<" if re.search(r'_lte?', attr) else "",
