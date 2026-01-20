@@ -92,7 +92,7 @@ def collection_details(request, collection_id):
             'species': collex.species,
             'citations': collex.get_citations(),
             'primary_tumor_location': collex.location,
-            'license': collex.license.split(";"),
+            'license': collex.license.split("::"),
             'collection_type': "Collection" if collex.collection_type == Collection.ORIGINAL_COLLEX else "Analysis Result",
              'collections': collex.collections.split(", ") if collex.collection_type == Collection.ANALYSIS_COLLEX else "",
             'analysis_artifacts': collex.analysis_artifacts
