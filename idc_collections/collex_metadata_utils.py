@@ -546,8 +546,10 @@ def build_explorer_context(is_dicofdic, source, versions, filters, fields, order
                 this_collex['total_size'] = collection.total_size
                 prog_collex['total_size_with_ar'] = collection.total_size_with_ar
                 this_collex['total_size_with_ar'] = collection.total_size_with_ar
-                prog_collex['license'] = ", ".join(collection.license.split(';'))
-                this_collex['license'] = ", ".join(collection.license.split(';'))
+                licenses = collection.license.split(';')
+                licenses.sort()
+                prog_collex['license'] = ", ".join(licenses)
+                this_collex['license'] = ", ".join(licenses)
                 programSet[name]['projects'][collection.collection_id] = prog_collex
 
         if with_related:
