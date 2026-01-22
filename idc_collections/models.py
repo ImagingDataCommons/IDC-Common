@@ -315,8 +315,8 @@ class Collection(models.Model):
     ANALYSIS_COLLEX = 'A'
     ORIGINAL_COLLEX = 'O'
     COLLEX_DISPLAY = {
-        ANALYSIS_COLLEX: 'Analysis',
-        ORIGINAL_COLLEX: 'Original'
+        ANALYSIS_COLLEX: 'Analysis Result',
+        ORIGINAL_COLLEX: 'Original Collection'
     }
     COLLEX_TYPES = (
         (ANALYSIS_COLLEX, COLLEX_DISPLAY[ANALYSIS_COLLEX]),
