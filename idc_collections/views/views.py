@@ -77,6 +77,10 @@ def collection_details(request, collection_id):
             else:
                 collex = Collection.objects.get(id=int(collection_id))
 
+        collex_list = ""
+        if collex.collection_type == Collection.ANALYSIS_COLLEX:
+            ar_collex = Collection.objects.filter(collection_id__in=collex.collections.split(", "))
+            collex_list = [{ 'collection_id': x.collection_id, 'collection_name': x.name} for x in ar_collex]
         context = {
             'collection_name': collex.name,
             'collection_id': collex.collection_id,
@@ -94,7 +98,7 @@ def collection_details(request, collection_id):
             'primary_tumor_location': collex.location,
             'license': collex.license.split("::"),
             'collection_type': "Collection" if collex.collection_type == Collection.ORIGINAL_COLLEX else "Analysis Result",
-             'collections': collex.collections.split(", ") if collex.collection_type == Collection.ANALYSIS_COLLEX else "",
+             'collections': collex_list,
             'analysis_artifacts': collex.analysis_artifacts
         }
 
