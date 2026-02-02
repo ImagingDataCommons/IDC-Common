@@ -580,7 +580,8 @@ def build_solr_query(filters, comb_with='AND', with_tags_for_ex=False, subq_join
             query_str = query_str.replace('\\\\"','\\\\\\"')
         full_query_str += query_str
 
-        if with_tags_for_ex:
+        # Don't produce an exclusion tag for AND'd values, otherwise the facet counts won't make sense
+        if with_tags_for_ex and value_op != "AND":
             filter_tags = filter_tags or {}
             tag = "f{}".format(str(count))
             filter_tags[attr_name] = tag
