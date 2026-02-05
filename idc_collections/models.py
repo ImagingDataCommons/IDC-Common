@@ -315,8 +315,8 @@ class Collection(models.Model):
     ANALYSIS_COLLEX = 'A'
     ORIGINAL_COLLEX = 'O'
     COLLEX_DISPLAY = {
-        ANALYSIS_COLLEX: 'Analysis',
-        ORIGINAL_COLLEX: 'Original'
+        ANALYSIS_COLLEX: 'Analysis Result',
+        ORIGINAL_COLLEX: 'Original Collection'
     }
     COLLEX_TYPES = (
         (ANALYSIS_COLLEX, COLLEX_DISPLAY[ANALYSIS_COLLEX]),
@@ -351,6 +351,7 @@ class Collection(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     access = models.CharField(max_length=16, null=False, blank=False, default="Public")
     collections = models.TextField(null=True, blank=False)
+    license = models.CharField(max_length=255, null=False, blank=False, default="N/A")
     data_versions = models.ManyToManyField(DataVersion)
     # We make this many to many in case a collection is part of one program, though it may not be
     program = models.ForeignKey(Program, on_delete=models.CASCADE, null=True)
