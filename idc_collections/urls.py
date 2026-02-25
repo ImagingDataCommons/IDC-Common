@@ -5,7 +5,7 @@ from . import views
 
 urlpatterns = [
     re_path(r'^$', views.collection_list, name='collections'),
-    #re_path(r'^(?P<collection_id>\d+)/$', views.collection_detail, name='collection_detail'),
+    re_path(r'^(?P<collection_id>[A-Za-z\d\-\_]+)/$', views.collection_details, name='collection_details'),
     re_path(r'^api/versions/$', views.views_api_v1.versions_list_api, name='versions_list_api'),
     re_path(r'^api/v1/versions/$', views.views_api_v1.versions_list_api, name='versions_list_api'),
     re_path(r'^api/v2/versions/$', views.views_api_v2.versions_list_api, name='versions_list_api'),
