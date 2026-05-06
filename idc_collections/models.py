@@ -343,7 +343,7 @@ class Collection(models.Model):
     supporting_data = models.CharField(max_length=255, null=True, blank=False)
     analysis_artifacts = models.CharField(max_length=255, null=True, blank=False)
     species = models.CharField(max_length=64, null=True, blank=False)
-    location = models.CharField(max_length=255, null=True, blank=False)
+    location = models.TextField(null=True, blank=False)
     active = models.BooleanField(default=True, null=False, blank=False)
     is_public = models.BooleanField(default=False, null=False, blank=False)
     collection_type = models.CharField(max_length=1, blank=False, null=False, choices=COLLEX_TYPES, default=ORIGINAL_COLLEX)
