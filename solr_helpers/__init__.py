@@ -178,7 +178,15 @@ def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets
 
     try:
         start = time.time()
-        query_response = requests.post(query_uri, data=json.dumps(payload), headers={'Content-type': 'application/json'}, auth=(SOLR_LOGIN, SOLR_PASSWORD), verify=SOLR_CERT)
+        post_vars = {
+            'data': json.dumps(payload),
+            'headers': {'Content-type': 'application/json'},
+            'auth': (SOLR_LOGIN, SOLR_PASSWORD)
+        }
+        if SOLR_CERT:
+            post_vars.update({'verify': SOLR_CERT})
+
+        query_response = requests.post(query_uri, **post_vars)
         stop = time.time()
 
         logger.info("[BENCHMARKING] Time to call Solr via POST to core {}: {}s".format(collection,str(stop-start)))
