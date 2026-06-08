@@ -2264,7 +2264,7 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
                 if ('crdc_series_uuid' in row):
                     studyrow['crdcval'].append(crdcid)
                 if ('instance_size' in row):
-                    studyrow['seriestotsize'] = studyrow['seriestotsize'] + row['instance_size']
+                    studyrow['seriestotsize'].append(row['instance_size'])
 
             for idx in rowsWithSeries:
                 solr_result['response']['docs'][idx]['val'].sort()
@@ -2277,8 +2277,8 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
             else:
                 row['selcnt'] = row['cnt']
             if 'seriestotsize' in row:
-                solr_result['response']['total_instance_size'] = solr_result['response']['total_instance_size'] - sum(
-                    row['instance_size']) + sum(row['seriestotsize'])
+                solr_result['response']['total_instance_size'] = (solr_result['response']['total_instance_size'] -
+                    row['instance_size'] + sum(row['seriestotsize']))
             if results_lvl == 'StudyInstanceUID':
                 del (row['SeriesInstanceUID'])
             else:
@@ -2286,17 +2286,19 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
                     row['SeriesInstanceUID'] = row['val']
                 if ('crdcval' in row):
                     row['crdc_series_uuid'] = row['crdcval']
-        doi_result = solr_result_series_lvl or solr_result
-        for doi in doi_result['facets']['dois']['buckets']:
-            if not solr_result['response'].get('dois', None):
-                solr_result['response']['dois'] = []
-            solr_result['response']['dois'].append(doi['val'])
+        doi_results = [solr_result_series_lvl, solr_result]
+        for doi_result in doi_results:
+            if doi_result:
+                for doi in doi_result['facets']['dois']['buckets']:
+                    if not solr_result['response'].get('dois', None):
+                        solr_result['response']['dois'] = []
+                    solr_result['response']['dois'].append(doi['val'])
+        solr_result['response']['dois'] = list(set(solr_result['response']['dois']))
         if size_only:
             solr_result['response']['total_size'] = solr_result['response']['total_instance_size']
         if debug:
             solr_result['response']['query_string'] = query_str
             solr_result['response']['query_string_series_lvl'] = query_str_series_lvl
-
     except Exception as e:
         logger.error("[ERROR] While fetching cart data:")
         logger.exception(e)
