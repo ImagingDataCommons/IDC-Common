@@ -1205,8 +1205,26 @@ def parse_partition_att_strings(query_sets, partition, join_with_child):
     return attStrA
 
 
-def create_cart_query_string(query_list, partitions, join_with_child):
+def create_cart_query_string(query_list, partitions, join_with_child, as_terms=False):
     solrA = []
+    # Clause counts over 1024 must be handled as a terms query
+    if as_terms or len(partitions) > 1000:
+        term_q = ""
+        term_fields = ["collection_id", "PatientID", "StudyInstanceUID", "SeriesInstanceUID"]
+        term_qs = {
+            "collection_id": [],
+            "PatientID": [],
+            "StudyInstanceUID": [],
+            "SeriesInstanceUID": []
+        }
+        for part in partitions:
+            term_level = len(part['id'])-1
+            term_qs[term_fields[term_level]].append(part['id'][-1])
+        for term, terms in term_qs.items():
+            if len(terms):
+                term_q += "{!terms f="+term+"}" + ",".join(terms)
+        return term_q
+
     for i in range(len(partitions)):
         cur_part = partitions[i]
         cur_part_attr_strA = parse_partition_att_strings(query_list, cur_part, join_with_child)
@@ -2288,7 +2306,7 @@ def get_cart_data_studylvl(filtergrp_list, partitions, limit, offset, length, mx
                     row['crdc_series_uuid'] = row['crdcval']
         doi_results = [solr_result_series_lvl, solr_result]
         for doi_result in doi_results:
-            if doi_result:
+            if doi_result and doi_result.get('facets',{}).get('dois', None):
                 for doi in doi_result['facets']['dois']['buckets']:
                     if not solr_result['response'].get('dois', None):
                         solr_result['response']['dois'] = []
