@@ -34,6 +34,7 @@ from time import sleep
 import re
 #from projects.models import Program
 from google_helpers.bigquery.bq_support import BigQuerySupport
+from google_helpers.bigquery.utils import MOLECULAR_CATEGORIES
 
 #from django.conf import settings
 
@@ -41,30 +42,13 @@ from google_helpers.bigquery.bq_support import BigQuerySupport
 
 debug = True
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", "No data - zero rows fetched, selected, or processed")
 
 PREFORMATTED_VALUES = {}
 
 PREFORMATTED_ATTRIBUTES = {}
-
-# TODO: move this into a table, maybe metadata_attr?
-MOLECULAR_CATEGORIES = {
-    'nonsilent': {
-        'name': 'Non-silent',
-        'attrs': [
-            'Missense_Mutation',
-            'Nonsense_Mutation',
-            'Nonstop_Mutation',
-            'Frame_Shift_Del',
-            'Frame_Shift_Ins',
-            'In_Frame_Del',
-            'In_Frame_Ins',
-            'Translation_Start_Site',
-        ]
-    }
-}
 
 MOLECULAR_ATTR = [
     {'value': 'Missense_Mutation', 'displ_name': 'Missense Mutation'},

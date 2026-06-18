@@ -23,7 +23,7 @@ from re import compile as re_compile
 
 from jsonschema import validate as schema_validate, ValidationError
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 class ServiceObjectBase(object):
     """

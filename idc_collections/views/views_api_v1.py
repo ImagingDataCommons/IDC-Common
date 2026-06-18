@@ -26,7 +26,7 @@ from solr_helpers import *
 
 import logging
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 DENYLIST_RE = settings.DENYLIST_RE
 

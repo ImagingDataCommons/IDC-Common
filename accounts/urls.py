@@ -14,7 +14,7 @@
 # limitations under the License.
 # 
 
-from django.conf.urls import url, include
+from django.urls import include, re_path, path
 from allauth import urls as allauth_urls
 from allauth.socialaccount.providers.google import urls as google_urls, views as google_views
 
@@ -22,7 +22,7 @@ from . import views
 
 
 urlpatterns = [
-    url(r'^', include(google_urls)),
-    url(r'^', include(allauth_urls)),
-    url(r'^logout', views.extended_logout_view, name='account_logout'),
+    re_path(r'^', include(google_urls)),
+    re_path(r'^', include(allauth_urls)),
+    re_path(r'^logout', views.extended_logout_view, name='account_logout'),
 ]

@@ -24,7 +24,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 import pytz
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 
 def utc_now_plus_expiry():

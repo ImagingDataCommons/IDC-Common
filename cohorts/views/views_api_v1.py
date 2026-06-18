@@ -45,17 +45,14 @@ debug = settings.DEBUG # RO global for this file
 DENYLIST_RE = settings.DENYLIST_RE
 BQ_SERVICE = None
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
-USER_DATA_ON = settings.USER_DATA_ON
 
 @csrf_exempt
 @api_auth
 @require_http_methods(["POST"])
 def save_cohort_api(request):
     if debug: logger.debug('Called '+sys._getframe().f_code.co_name)
-
-    print(request.GET.get('email', ''))
     try:
         body = json.loads(request.body.decode('utf-8'))
         user = User.objects.get(email=request.GET.get('email', ''))
@@ -101,8 +98,6 @@ def save_cohort_api(request):
 def cohort_manifest_api(request, cohort_id=0):
     if debug: logger.debug('Called '+sys._getframe().f_code.co_name)
 
-    # template = 'cohorts/cohort_filelist{}.html'.format("_{}".format(panel_type) if panel_type else "")
-
     if cohort_id == 0:
         manifest_info = {
             "message": "A cohort ID was not specified.".format(cohort_id),
@@ -110,11 +105,6 @@ def cohort_manifest_api(request, cohort_id=0):
         }
         return JsonResponse(manifest_info)
 
-        # messages.error()
-        # messages.error(request, 'Cohort requested does not exist.')
-        # return redirect('/user_landing')
-
-    print(request.GET.get('email', ''))
     try:
         cohort = Cohort.objects.get(id=cohort_id)
     except ObjectDoesNotExist as e:
@@ -202,11 +192,6 @@ def cohort_query_api(request, cohort_id=0):
         }
         return JsonResponse(manifest_info)
 
-    # if cohort_id == 0:
-    #     messages.error(request, 'Cohort requested does not exist.')
-    #     return redirect('/user_landing')
-
-    # print(request.GET.get('email', ''))
     try:
         cohort = Cohort.objects.get(id=cohort_id)
     except ObjectDoesNotExist as e:
@@ -286,12 +271,7 @@ def cohort_preview_query_api(request):
 @require_http_methods(["GET"])
 def cohort_list_api(request):
     if debug: logger.debug('Called ' + sys._getframe().f_code.co_name)
-
-
-    print(request.GET.get('email', ''))
     try:
-        # response = cohorts_list(request)
-
         user = User.objects.get(email=request.GET.get('email', ''))
         cohortList = []
 
@@ -337,7 +317,6 @@ def cohort_list_api(request):
 def delete_cohort_api(request):
     if debug: logger.debug('Called {}'.format(sys._getframe().f_code.co_name))
     cohort_info = []
-    print(request.GET.get('email', ''))
     try:
         user = User.objects.get(email=request.GET.get('email', ''))
 

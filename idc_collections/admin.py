@@ -21,8 +21,9 @@ from idc_collections.models import Collection, Program
 
 class Program_Admin(admin.ModelAdmin):
     list_display = (
-        'name',
+        'full_name',
         'short_name',
+        'display_name',
         'description',
         'active',
         'owner',

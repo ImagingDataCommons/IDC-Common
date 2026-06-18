@@ -9,7 +9,7 @@ import logging
 from sharing.models import Shared_Resource
 from functools import reduce
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 
 class ProgramQuerySet(models.QuerySet):
@@ -49,8 +49,10 @@ class Program(models.Model):
     id = models.AutoField(primary_key=True)
     # Eg. TCGA
     short_name = models.CharField(max_length=15, null=False, blank=False)
+    # Preferred name to display in the UI if not the short name
+    display_name = models.CharField(max_length=255, null=True)
     # Eg. The Cancer Genome Atlas
-    name = models.CharField(max_length=255, null=True)
+    full_name = models.CharField(max_length=255, null=True)
     description = models.TextField(null=True, blank=True)
     active = models.BooleanField(default=True)
     objects = ProgramManager()
@@ -66,7 +68,7 @@ class Program(models.Model):
         return Program.objects.filter(active=True,is_public=True,owner=User.objects.get(is_active=True,username="idc",is_superuser=True,is_staff=True))
 
     def __str__(self):
-        return "{} ({}), {}".format(self.short_name, self.name, "Public" if self.is_public else "Private (owner: {})".format(self.owner.email))
+        return "{} ({}), {}".format(self.short_name, self.display_name, "Public" if self.is_public else "Private (owner: {})".format(self.owner.email))
 
 
 class Project(models.Model):
@@ -283,6 +285,26 @@ class CollectionQuerySet(models.QuerySet):
             tips[collex.collection_id] = collex.description
         return tips
 
+    def get_citations(self):
+        cites = []
+        collections = self.all()
+        for collex in collections:
+            cites.extend(collex.doi.split(" "))
+        cites = list(set(cites))
+        cite_text = Citation.objects.filter(doi__in=cites)
+        return {x.doi: x.cite for x in cite_text}
+
+    def get_with_citations(self):
+        cites = []
+        collections = self.all()
+        for collex in collections:
+            cites.extend(collex.doi.split(" "))
+        cites = list(set(cites))
+        cite_objs = Citation.objects.filter(doi__in=cites)
+        for collex in collections:
+            collex.citations = [x.cite for x in cite_objs.filter(doi__in=collex.doi.split(" "))]
+        return collections
+
 
 class CollectionManager(models.Manager):
     def get_queryset(self):
@@ -293,8 +315,8 @@ class Collection(models.Model):
     ANALYSIS_COLLEX = 'A'
     ORIGINAL_COLLEX = 'O'
     COLLEX_DISPLAY = {
-        ANALYSIS_COLLEX: 'Analysis',
-        ORIGINAL_COLLEX: 'Original'
+        ANALYSIS_COLLEX: 'Analysis Result',
+        ORIGINAL_COLLEX: 'Original Collection'
     }
     COLLEX_TYPES = (
         (ANALYSIS_COLLEX, COLLEX_DISPLAY[ANALYSIS_COLLEX]),
@@ -313,23 +335,30 @@ class Collection(models.Model):
     access = models.CharField(max_length=40, null=True, blank=False)
     subject_count = models.IntegerField(default=0, null=True, blank=False)
     image_types = models.CharField(max_length=255, null=True, blank=False)
-    cancer_type = models.CharField(max_length=512, null=True, blank=False)
+    cancer_type = models.TextField(null=True, blank=False)
     doi = models.CharField(max_length=255, null=True, blank=False)
+    total_size = models.FloatField(null=False, blank=False, default=0.0)
+    total_size_with_ar = models.FloatField(null=False, blank=False, default=0.0)
     source_url = models.CharField(max_length=512, null=True, blank=False)
     supporting_data = models.CharField(max_length=255, null=True, blank=False)
     analysis_artifacts = models.CharField(max_length=255, null=True, blank=False)
     species = models.CharField(max_length=64, null=True, blank=False)
-    location = models.CharField(max_length=255, null=True, blank=False)
+    location = models.TextField(null=True, blank=False)
     active = models.BooleanField(default=True, null=False, blank=False)
     is_public = models.BooleanField(default=False, null=False, blank=False)
     collection_type = models.CharField(max_length=1, blank=False, null=False, choices=COLLEX_TYPES, default=ORIGINAL_COLLEX)
     objects = CollectionManager()
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
     access = models.CharField(max_length=16, null=False, blank=False, default="Public")
-    collections = models.CharField(max_length=255, null=True, blank=False)
+    collections = models.TextField(null=True, blank=False)
+    license = models.CharField(max_length=255, null=False, blank=False, default="N/A")
     data_versions = models.ManyToManyField(DataVersion)
     # We make this many to many in case a collection is part of one program, though it may not be
     program = models.ForeignKey(Program, on_delete=models.CASCADE, null=True)
+
+    def get_citations(self):
+        cite_text = Citation.objects.filter(doi__in=self.doi.split(" "))
+        return {x.doi: x.cite for x in cite_text}
 
     def get_programs(self):
         return self.program
@@ -792,7 +821,7 @@ class Attribute_Tooltips(models.Model):
     attribute = models.ForeignKey(Attribute, null=False, blank=False, on_delete=models.CASCADE)
     # The value of the attribute linked to this tooltip
     tooltip_id = models.CharField(max_length=256, null=False, blank=False)
-    tooltip = models.CharField(max_length=4096, null=False, blank=False)
+    tooltip = models.TextField(null=False, blank=False)
     objects = Attribute_TooltipsManager()
 
     class Meta(object):
@@ -828,6 +857,12 @@ class Attribute_Ranges(models.Model):
 
     def __str__(self):
         return "{}: {} to {} by {}".format(self.attribute.name, str(self.first), str(self.last), str(self.gap))
+
+
+class Citation(models.Model):
+    id = models.AutoField(primary_key=True, null=False, blank=False)
+    doi = models.CharField(max_length=1024, null=False, blank=False)
+    cite = models.TextField(null=False, blank=False)
 
 
 class User_Feature_Definitions(models.Model):

@@ -25,7 +25,7 @@ from idc_collections.collex_metadata_utils import get_bq_metadata, get_bq_string
 from google_helpers.bigquery.bq_support import BigQuerySupport
 
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 DENYLIST_RE = settings.DENYLIST_RE
 
 # Get the current if none specified
@@ -34,7 +34,11 @@ def get_idc_data_version(version_number=None):
         # No version specified. Use the current version
         data_version = ImagingDataCommonsVersion.objects.get(active=True)
     else:
-        data_version = ImagingDataCommonsVersion.objects.get(version_number=version_number)
+        try:
+            data_version = ImagingDataCommonsVersion.objects.get(version_number=version_number)
+        except:
+            # An invalid version_number was provided. Give them the latest version
+            data_version = ImagingDataCommonsVersion.objects.get(active=True)
     return data_version
 
 

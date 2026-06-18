@@ -19,28 +19,13 @@ standard_library.install_aliases()
 from builtins import object
 import logging as logger
 from urllib.parse import quote as urllib2_quote
-
-from oauth2client.service_account import ServiceAccountCredentials
-from googleapiclient import discovery
-from httplib2 import Http
-from .utils import execute_with_retries, build_with_retries
-
+import google.cloud.logging as stackdriver_logging
 
 class StackDriverLogger(object):
-    LOGGING_SCOPES = [
-        'https://www.googleapis.com/auth/cloud-platform',
-        'https://www.googleapis.com/auth/logging.admin',
-        'https://www.googleapis.com/auth/logging.write'
-    ]
 
-    def __init__(self, project_name, credentials):
+    def __init__(self, project_name):
         self.project_name = project_name
-        self.credentials = credentials
-
-    def _get_service(self):
-        http_auth = self.credentials.authorize(Http())
-        service = build_with_retries('logging', 'v2', None, 2, http=http_auth)
-        return service, http_auth
+        self.logging_client = stackdriver_logging.Client(project=self.project_name)
 
     def write_log_entries(self, log_name, log_entry_array):
         """ Creates log entries using the StackDriver logging API.
@@ -50,35 +35,24 @@ class StackDriverLogger(object):
                 log_entry_array: List of log entries. See https://cloud.google.com/logging/docs/api/reference/rest/v2/LogEntry
         """
         try:
-            client, http_auth = self._get_service()
+            client = self.logging_client
         except Exception as e:
-            logger.error("get_logging_resource failed: {}".format(e.message))
+            logger.error("failed to get a logging client: {}".format(e.message))
             return
 
-        # Create a POST body for the write log entries request(Payload).
-        log_name_param = "projects/{project_id}/logs/{log_name}".format(
-            project_id=self.project_name,
-            log_name=urllib2_quote(log_name, safe='')
-        )
-
-        body = {
-            "logName": log_name_param,
-            "resource": {
-                "type": "gce_instance",
-                "labels": {
-                    "zone": "us-central1-a"
-                }
-            },
-            "entries": log_entry_array
-        }
+        stackdriver_logger = client.logger(name=log_name)
 
         try:
-            # try this a few times to avoid the deadline exceeded problem
-            request = client.entries().write(body=body)
-            response = execute_with_retries(request, 'WRITE_LOG_ENTRIES', 2)
-
-            if response:
-                logger.error("Unexpected response from logging API: {}".format(response))
+            if len(log_entry_array) > 1:
+                # Batch commit multiple entries
+                batch = stackdriver_logger.batch()
+                for log_entry in log_entry_array:
+                    batch.log(log_entry['textPayload'], severity=log_entry['severity'])
+                batch.commit()
+            else:
+                # otherwise a single-write will be fine
+                log_entry = log_entry_array[0]
+                stackdriver_logger.log(log_entry['textPayload'], severity=log_entry['severity'])
 
         except Exception as e:
             # If we still get an exception, figure out what the type is:
@@ -97,12 +71,11 @@ class StackDriverLogger(object):
             'textPayload': log_text
         }])
 
+
+    # This *IS* used in a few places 4/25/25. Converting to ISB-CGC form!
     @classmethod
     def build_from_django_settings(cls):
         from django.conf import settings
-        project_name = settings.BIGQUERY_PROJECT_ID
-        credentials = ServiceAccountCredentials.from_json_keyfile_name(
-            settings.GOOGLE_APPLICATION_CREDENTIALS, cls.LOGGING_SCOPES)
-
-        return cls(project_name, credentials)
+        project_name = settings.GCLOUD_PROJECT_ID
+        return cls(project_name)
 

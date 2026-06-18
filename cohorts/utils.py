@@ -36,7 +36,7 @@ from google_helpers.bigquery.bq_support import BigQuerySupport
 from idc_collections.collex_metadata_utils import get_collex_metadata, filter_manifest
 from idc_collections.models import DataSetType,DataSource
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 DENYLIST_RE = settings.DENYLIST_RE
 
 
@@ -45,6 +45,7 @@ def _get_cohort_stats(cohort_id=0, filters=None, sources=None):
         'PatientID': 0,
         'StudyInstanceUID': 0,
         'SeriesInstanceUID': 0,
+        'total_instance_size': 0,
         'collections': []
     }
 
@@ -141,7 +142,7 @@ def _save_cohort(user, filters=None, name=None, cohort_id=None, version=None, de
 
         cohort_details = {}
         if name or desc:
-            denylist = re.compile(DENYLIST_RE, re.UNICODE)
+            denylist = re.compile(DENYLIST_RE, re.UNICODE|re.IGNORECASE)
             check = {'name': {'val': name, 'match': denylist.search(str(name))},
                      'description': {'val': desc, 'match': denylist.search(str(desc))}}
             if len([check[x]['match'] for x in check if check[x]['match'] is not None]):

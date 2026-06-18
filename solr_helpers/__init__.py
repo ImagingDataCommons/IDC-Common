@@ -9,9 +9,9 @@ import time
 
 from idc_collections.models import Attribute, DataSource, Attribute_Ranges, DataSetType
 
-from metadata.query_helpers import MOLECULAR_CATEGORIES
+from google_helpers.bigquery.utils import MOLECULAR_CATEGORIES
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 SOLR_URI = settings.SOLR_URI
 SOLR_LOGIN = settings.SOLR_LOGIN
@@ -24,6 +24,7 @@ BMI_MAPPING = {
     'overweight': '[25 TO 30}',
     'obese': '[30 TO *]'
 }
+
 
 # Combined query and result formatter method
 # optionally will normalize facet counting so the response structure is the same for facets+docs and just facets
@@ -112,9 +113,9 @@ def query_solr_and_format_result(query_settings, normalize_facets=True, normaliz
 
 # Execute a POST request to the solr server available available at settings.SOLR_URI
 def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets=None, sort=None, counts_only=True,
-               collapse_on=None, offset=0, limit=1000, uniques=None, with_cursor=None, stats=None, totals=None):
-    query_uri = "{}{}/query".format(SOLR_URI, collection)
+               collapse_on=None, offset=0, limit=1000, uniques=None, with_cursor=None, stats=None, totals=None, op=None):
 
+    query_uri = "{}{}/query".format(SOLR_URI, collection)
     payload = {
         "query": query_string or "*:*",
         "limit": 0 if counts_only else limit,
@@ -123,6 +124,9 @@ def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets
             "debugQuery": "on"
         }
     }
+
+    if op:
+        payload['params']['q.op'] = op
 
     if with_cursor:
         payload['params']['cursorMark'] = with_cursor
@@ -174,7 +178,6 @@ def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets
 
     try:
         start = time.time()
-
         query_response = requests.post(query_uri, data=json.dumps(payload), headers={'Content-type': 'application/json'}, auth=(SOLR_LOGIN, SOLR_PASSWORD), verify=SOLR_CERT)
         stop = time.time()
 
@@ -386,13 +389,13 @@ def build_solr_facets(attrs, filter_tags=None, include_nulls=True, unique=None, 
 # subq_join_field: If inverted filters are present, subq_join_field determines the field used to {!join} the inverted
 # subquery to the main query
 #
-# search_child_records_by: a dict indicating what field, if any, should be used in subquerying 'child' or related records.
+# search_child_records_by: a dict indicating what field, if any, should be used in subquerying 'child' or related records for each filter attribute
 # This allows for searching on 'related records' which are being filtered out based on lack of a filter value, but which
 # satisfy another criteria - eg., records from the same study may not all have the same fields pulled out, but you may
 # still want those records when filtering on this attribute.
 #
 def build_solr_query(filters, comb_with='AND', with_tags_for_ex=False, subq_join_field=None,
-                     search_child_records_by=None, global_value_op='OR'):
+                     search_child_records_by=None, global_value_op='OR', solr_default_op='OR'):
 
     # subq_join not currently used in IDC
     ranged_attrs = Attribute.get_ranged_attrs()
@@ -502,7 +505,10 @@ def build_solr_query(filters, comb_with='AND', with_tags_for_ex=False, subq_join
 
         # If it's looking for a single None value
         if len(values) == 1 and values[0] == 'None':
-            query_str += '(-%s:{* TO *})' % attr_name
+            if (solr_default_op == "OR"):
+                query_str += '(-%s:{* TO *})' % attr_name
+            else:
+                query_str += '(*:* NOT %s:{* TO *})' % attr_name
         # If it's a ranged value, calculate the bins
         elif attr_name == 'bmi':
             with_none = False
@@ -544,14 +550,19 @@ def build_solr_query(filters, comb_with='AND', with_tags_for_ex=False, subq_join
                     clause = rngTemp.format(attr_name, values[0], values[1])
                 else:
                     clause = "{}:{}".format(attr_name, values[0])
-
-            query_str += (('(-(-(%s) +(%s:{* TO *})))' % (clause, attr_name)) if with_none else "(+({}))".format(clause))
+            if (solr_default_op=="OR"):
+                query_str += (('(-(-(%s) +(%s:{* TO *})))' % (clause, attr_name)) if with_none else "(+({}))".format(clause))
+            else:
+                query_str += (('(%s OR (*:* NOT %s:{* TO *}))' % (clause, attr_name)) if with_none else "(+({}))".format(clause))
 
         else:
             vals = "\" {} \"".format(value_op).join(values)
             if 'None' in values:
                 values.remove('None')
-                query_str += '(-(-(%s:("%s")) +(%s:{* TO *})))' % (attr_name,vals, attr_name)
+                if (solr_default_op=="OR"):
+                    query_str += '(-(-(%s:("%s")) +(%s:{* TO *})))' % (attr_name,vals, attr_name)
+                else:
+                    query_str += '((%s:("%s")) OR (*:* NOT %s:{* TO *}))' % (attr_name, vals, attr_name)
             else:
                 query_str += '(+%s:("%s"))' % (attr_name, vals)
 
@@ -562,9 +573,15 @@ def build_solr_query(filters, comb_with='AND', with_tags_for_ex=False, subq_join
                     "{!join to=%s from=%s}%s" % (search_child_records_by[attr_name], search_child_records_by[attr_name],
                                                  query_str.replace("\"", "\\\"")))
 
+            # certain attributes values include quotes, ie Manufacturer = \"GE Healthcare\" which leads to 'subqueries'
+            # in filter strings with nested quotes, ie,
+            # _query_:"{!join to=StudyInstanceUID from=StudyInstanceUID}(+Manufacturer:(""GE Healthcare""))"))
+            # in this case extra backslashes are needed around the inner quotes
+            query_str = query_str.replace('\\\\"','\\\\\\"')
         full_query_str += query_str
 
-        if with_tags_for_ex:
+        # Don't produce an exclusion tag for AND'd values, otherwise the facet counts won't make sense
+        if with_tags_for_ex and value_op != "AND":
             filter_tags = filter_tags or {}
             tag = "f{}".format(str(count))
             filter_tags[attr_name] = tag

@@ -24,30 +24,18 @@ import sys
 
 import logging
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 BIGQUERY_SCOPES = ['https://www.googleapis.com/auth/bigquery',
                    'https://www.googleapis.com/auth/bigquery.insertdata']
 
 
+# WJRL 4/25/25 we need to convert this:
 def get_bigquery_service():
-
-    credentials = GoogleCredentials.from_stream(settings.GOOGLE_APPLICATION_CREDENTIALS).create_scoped(BIGQUERY_SCOPES)
+    credentials = GoogleCredentials.get_application_default().create_scoped(BIGQUERY_SCOPES)
     http = httplib2.Http()
     http = credentials.authorize(http)
     service = discovery.build('bigquery', 'v2', http=http, cache_discovery=False)
 
     return service
 
-
-def authorize_credentials_with_Google():
-    if settings.DEBUG: logger.debug('Called '+sys._getframe().f_code.co_name)
-    # documentation: https://developers.google.com/accounts/docs/application-default-credentials
-    SCOPES = ['https://www.googleapis.com/auth/bigquery']
-    # credentials = GoogleCredentials.get_application_default().create_scoped(SCOPES)
-    credentials = GoogleCredentials.from_stream(settings.GOOGLE_APPLICATION_CREDENTIALS).create_scoped(SCOPES)
-    http = httplib2.Http()
-    http = credentials.authorize(http)
-    service = discovery.build('bigquery', 'v2', http=http, cache_discovery=False)
-    if settings.DEBUG: logger.debug(' big query authorization '+sys._getframe().f_code.co_name)
-    return service

@@ -26,7 +26,7 @@ from django.urls import reverse
 
 from .models import *
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 
 @login_required

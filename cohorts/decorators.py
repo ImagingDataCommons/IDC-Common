@@ -22,7 +22,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse
 
 import logging
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 
 # Adapted from the Django REST Framework's TokenAuthentization class

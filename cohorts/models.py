@@ -35,7 +35,7 @@ from sharing.models import Shared_Resource
 from functools import reduce
 from google_helpers.bigquery.bq_support import BigQuerySupport
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 
 class CohortQuerySet(models.QuerySet):
@@ -446,7 +446,7 @@ class Filter(models.Model):
         return self.OP_TO_STR[self.operator]
 
     def get_filter(self):
-        if self.operator not in [self.OR, self.BTW]:
+        if self.operator not in self.OP_TO_SUFFIX and self.operator != self.OR:
             return {
                 self.get_attr_name(): { 'op': self.get_operator(), 'values': self.value.split(self.value_delimiter) }
             }
@@ -463,7 +463,7 @@ class Filter(models.Model):
         }
 
     def __repr__(self):
-        if self.operator not in [self.OR, self.BTW]:
+        if self.operator not in self.OP_TO_SUFFIX and self.operator != self.OR:
             return "{ %s: {'op': %s, 'values': %s }" % (self.get_attr_name(), self.get_operator(), "[{}]".format(self.value))
         return "{ %s }" % ("\"{}\": [{}]".format(self.get_attr_name(), self.value))
 

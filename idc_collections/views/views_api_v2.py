@@ -20,16 +20,17 @@ from idc_collections.models import Program, Collection, DataSetType, ImagingData
 from django.views.decorators.http import require_http_methods
 from cohorts.decorators import api_auth
 
-from cohorts.utils_api_v1 import get_idc_data_version
+from cohorts.utils_api_v2 import get_idc_data_version
 
 from solr_helpers import *
 
 import logging
 
-logger = logging.getLogger('main_logger')
+logger = logging.getLogger(__name__)
 
 DENYLIST_RE = settings.DENYLIST_RE
 
+NUMERIC_OPS = ('_btw', '_ebtw', '_btwe', '_ebtwe', '_gte', '_lte', '_gt', '_lt', '_eq')
 # Return a list of defined IDC versions
 @api_auth
 @require_http_methods(["GET"])
@@ -138,7 +139,7 @@ def attributes_list_api(request):
 
     try:
         data_version = get_idc_data_version('')
-        response = {"idc_data_version": data_version.version_number, "data_sources": []}
+        response = {"data_sources": []}
         sources = data_version.dataversion_set.filter(active=True).get_data_sources().filter(source_type='B').distinct()
         for source in sources:
             attributes = sorted(source.get_attr(for_faceting=False).filter(default_ui_display=True), key=lambda d: d.name.lower())
@@ -152,12 +153,15 @@ def attributes_list_api(request):
                     # "active": attribute.active,
                     "units": attribute.units,
                 }
-                attributes_info.append(attribute_info)
                 if attribute_info['data_type'] == 'Continuous Numeric':
-                    for suffix in ['lt', 'lte', 'btw', 'ebtw', 'ebtwe', 'btwe', 'gte', 'gt']:
+                    # for suffix in ['lt', 'lte', 'btw', 'ebtw', 'ebtwe', 'btwe', 'gte', 'gt', 'eq']:
+                    for suffix in NUMERIC_OPS:
                         attribute_info_copy = dict(attribute_info)
-                        attribute_info_copy['name'] = '{}_{}'.format(attribute.name, suffix)
+                        attribute_info_copy['name'] = '{}{}'.format(attribute.name, suffix)
                         attributes_info.append(attribute_info_copy)
+                else:
+                    attributes_info.append(attribute_info)
+
             data_source = {
                 "data_source": source.name,
                 'filters': attributes_info
@@ -176,14 +180,25 @@ def attributes_list_api(request):
 
 @api_auth
 @require_http_methods(["GET"])
-def queryfields_list_api(request):
+def queryfields_list_api(request, version=""):
     try:
-        data_version = get_idc_data_version('')
-        response = {"idc_data_version": data_version.version_number, "data_sources": []}
-
-
-        sources = ImagingDataCommonsVersion.objects.get(active=True).get_data_sources(active=True,
-                                                                                      source_type=DataSource.BIGQUERY)
+        if version == 'current':
+            version = ""
+        try:
+            data_version = get_idc_data_version(version)
+        except:
+            response = {
+                "message": f"Supplied idc_data_version '{version}' is invalid. Query the /versions endpoint for defined versions.",
+                "code": 400
+            }
+            return JsonResponse(response)
+        response = {
+            "idc_data_version": data_version.version_number,
+            "data_sources": [],
+            "code": 200
+        }
+        sources = ImagingDataCommonsVersion.objects.filter(version_number=data_version.version_number) \
+            .get_data_sources(source_type=DataSource.BIGQUERY)
 
         # Get the ANCILLARY (TCGA) query fields
         image_sources = sources.prefetch_related('data_sets').filter(data_sets__data_type=DataSetType.ANCILLARY_DATA)
