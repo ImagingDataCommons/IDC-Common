@@ -190,7 +190,6 @@ def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets
             post_vars['headers'].update({'X-WEBAPP-KEY': WEBAPP_KEY})
 
         query_response = requests.post(query_uri, **post_vars)
-        logger.info(f"[STATUS] Testing proxy pass through: {query_response}")
         stop = time.time()
 
         logger.info("[BENCHMARKING] Time to call Solr via POST to core {}: {}s".format(collection,str(stop-start)))
