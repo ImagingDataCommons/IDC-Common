@@ -17,6 +17,7 @@ SOLR_URI = settings.SOLR_URI
 SOLR_LOGIN = settings.SOLR_LOGIN
 SOLR_PASSWORD = settings.SOLR_PASSWORD
 SOLR_CERT = settings.SOLR_CERT
+WEBAPP_KEY = settings.WEBAPP_KEY
 
 BMI_MAPPING = {
     'underweight': '[* TO 18.5}',
@@ -185,8 +186,11 @@ def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets
         }
         if SOLR_CERT:
             post_vars.update({'verify': SOLR_CERT})
+        if WEBAPP_KEY:
+            post_vars['headers'].update({'X-WEBAPP-KEY': WEBAPP_KEY})
 
         query_response = requests.post(query_uri, **post_vars)
+        logger.info(f"[STATUS] Testing proxy pass through: {query_response}")
         stop = time.time()
 
         logger.info("[BENCHMARKING] Time to call Solr via POST to core {}: {}s".format(collection,str(stop-start)))
