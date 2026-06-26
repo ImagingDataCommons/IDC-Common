@@ -192,7 +192,7 @@ def query_solr(collection=None, fields=None, query_string=None, fqs=None, facets
         query_response = requests.post(query_uri, **post_vars)
         stop = time.time()
 
-        logger.info("[BENCHMARKING] Time to call Solr via POST to core {}: {}s".format(collection,str(stop-start)))
+        logger.info("[BENCHMARKING] Time to call Solr at {} via POST to core {}: {}s".format(SOLR_URI, collection,str(stop-start)))
 
         if query_response.status_code != 200:
             msg = "Saw response code {} when querying solr collection {} with string {}\npayload: {}\nresponse text: {}".format(
