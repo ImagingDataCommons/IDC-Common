@@ -45,6 +45,7 @@ from google.auth import jwt
 
 BQ_ATTEMPT_MAX = 10
 MAX_FILE_LIST_ENTRIES = settings.MAX_FILE_LIST_REQUEST
+MAX_PARTITION_CLAUSES = settings.MAX_PARTITION_CLAUSES
 
 logger = logging.getLogger(__name__)
 
@@ -1208,7 +1209,7 @@ def parse_partition_att_strings(query_sets, partition, join_with_child):
 def create_cart_query_string(query_list, partitions, join_with_child, as_terms=False):
     solrA = []
     # Clause counts over 1024 must be handled as a terms query
-    if as_terms or len(partitions) > 1000:
+    if as_terms or len(partitions) > MAX_PARTITION_CLAUSES:
         term_q = ""
         term_fields = ["collection_id", "PatientID", "StudyInstanceUID", "SeriesInstanceUID"]
         term_qs = {
