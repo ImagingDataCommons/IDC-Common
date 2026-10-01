@@ -73,10 +73,11 @@ def collection_details(request, collection_id):
             collex = Collection.objects.get(collection_id=collection_id)
         except ObjectDoesNotExist:
             non_numeric = re.search('[^\d]+',collection_id)
-            if non_numeric:
+            check_analysis_result = Collection.objects.filter(name=collection_id)
+            if non_numeric and len(check_analysis_result) <= 0:
                 raise ObjectDoesNotExist
             else:
-                collex = Collection.objects.get(id=int(collection_id))
+                collex = Collection.objects.get(name=collection_id) if non_numeric else Collection.objects.get(id=int(collection_id))
 
         if collex.collection_type == Collection.ANALYSIS_COLLEX and "collections" in request.path:
             return redirect(reverse('analysis_results', args=[collection_id]))
