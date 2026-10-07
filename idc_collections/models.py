@@ -323,12 +323,19 @@ class Collection(models.Model):
         (ORIGINAL_COLLEX, COLLEX_DISPLAY[ORIGINAL_COLLEX])
     )
 
+    # database autofield
     id = models.AutoField(primary_key=True)
-    name = models.CharField(max_length=255, null=True, blank=False)
-    tcia_collection_id = models.CharField(max_length=255, null=True, blank=False)
-    nbia_collection_id = models.CharField(max_length=255, null=True, blank=False)
-    collection_id = models.CharField(max_length=255, null=True, blank=False)
+    # IDC-specific UUID for ETL versioning
     collection_uuid = models.CharField(max_length=255, null=True, blank=False)
+    # lowercase and _ only ID
+    collection_id = models.CharField(max_length=255, null=True, blank=False)
+    # fully cased ID
+    name = models.CharField(max_length=255, null=True, blank=False)
+    # Descriptive title, can be null/blank for collections, almost always found in analysis results
+    title = models.TextField(null=True, blank=False)
+    tcia_collection_id = models.CharField(max_length=255, null=True, blank=False)
+    # deprecated
+    nbia_collection_id = models.CharField(max_length=255, null=True, blank=False)
     description = models.TextField(null=True, blank=False)
     date_updated = models.DateField(null=True, blank=False)
     status = models.CharField(max_length=40, null=True, blank=False)
